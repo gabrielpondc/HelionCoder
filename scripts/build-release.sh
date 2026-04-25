@@ -40,6 +40,17 @@ EXTERNALS=(
   "@opentelemetry/exporter-trace-otlp-proto"
 )
 
+is_windows_host() {
+  case "$OSTYPE" in
+    msys*|cygwin*|win32*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 build_native() {
   local target="$1"
   local outfile="$2"
@@ -49,8 +60,10 @@ build_native() {
     args+=(--target="$target")
   fi
 
-  if [[ "$target" == bun-windows-* ]]; then
+  if [[ "$target" == bun-windows-* ]] && is_windows_host; then
     args+=(--windows-icon="$WINDOWS_ICON")
+  elif [[ "$target" == bun-windows-* ]]; then
+    echo "==> Skipping Windows icon: Bun only supports --windows-icon when compiling on Windows"
   fi
 
   for pkg in "${EXTERNALS[@]}"; do
