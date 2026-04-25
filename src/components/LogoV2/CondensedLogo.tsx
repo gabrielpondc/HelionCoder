@@ -11,7 +11,7 @@ import { truncate } from '../../utils/format.js';
 import { isFullscreenEnvEnabled } from '../../utils/fullscreen.js';
 import { formatModelAndBilling, getLogoDisplayData, truncatePath } from '../../utils/logoV2Utils.js';
 import { renderModelSetting } from '../../utils/model/model.js';
-import { PRODUCT_NAME } from '../../utils/brand.js';
+import { PRODUCT_MARK, PRODUCT_NAME } from '../../utils/brand.js';
 import { OffscreenFreeze } from '../OffscreenFreeze.js';
 import { AnimatedHelion } from './AnimatedHelion.js';
 import { Helion } from './Helion.js';
@@ -89,7 +89,7 @@ export function CondensedLogo() {
   }
   let t5;
   if ($[8] === Symbol.for("react.memo_cache_sentinel")) {
-    t5 = <Text bold={true}>{PRODUCT_NAME}</Text>;
+    t5 = <Text bold={true}>{PRODUCT_MARK} {PRODUCT_NAME}</Text>;
     $[8] = t5;
   } else {
     t5 = $[8];

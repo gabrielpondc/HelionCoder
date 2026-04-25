@@ -2,12 +2,7 @@ import type { RGBColor as RGBColorString } from '../../ink/styles.js'
 import type { RGBColor as RGBColorType } from './types.js'
 
 export function getDefaultCharacters(): string[] {
-  if (process.env.TERM === 'xterm-ghostty') {
-    return ['·', '✢', '✳', '✶', '✻', '*'] // Use * instead of ✽ for Ghostty because the latter renders in a way that's slightly offset
-  }
-  return process.platform === 'darwin'
-    ? ['·', '✢', '✳', '✶', '✻', '✽']
-    : ['·', '✢', '*', '✶', '✻', '✽']
+  return ['·', '𝒽', '𝓗', '𝓱', 'Ꮒ', '🅷']
 }
 
 // Interpolate between two RGB colors
@@ -82,4 +77,3 @@ export function parseRGB(colorStr: string): RGBColorType | null {
   RGB_CACHE.set(colorStr, result)
   return result
 }
-

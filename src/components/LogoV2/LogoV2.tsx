@@ -43,7 +43,7 @@ import { useAppState } from '../../state/AppState.js';
 import { getEffortSuffix } from '../../utils/effort.js';
 import { useMainLoopModel } from '../../hooks/useMainLoopModel.js';
 import { renderModelSetting } from '../../utils/model/model.js';
-import { PRODUCT_NAME } from '../../utils/brand.js';
+import { PRODUCT_MARK, PRODUCT_NAME } from '../../utils/brand.js';
 const LEFT_PANEL_MAX_WIDTH = 50;
 export function LogoV2() {
   const $ = _c(94);
@@ -252,8 +252,9 @@ export function LogoV2() {
   }
   const layoutMode = getLayoutMode(columns);
   const userTheme = resolveThemeSetting(getGlobalConfig().theme);
-  const borderTitle = ` ${color("claude", userTheme)(PRODUCT_NAME)} ${color("inactive", userTheme)(`v${version}`)} `;
-  const compactBorderTitle = color("claude", userTheme)(` ${PRODUCT_NAME} `);
+  const brandedTitle = `${PRODUCT_MARK} ${PRODUCT_NAME}`;
+  const borderTitle = ` ${color("claude", userTheme)(brandedTitle)} ${color("inactive", userTheme)(`v${version}`)} `;
+  const compactBorderTitle = color("claude", userTheme)(` ${brandedTitle} `);
   if (layoutMode === "compact") {
     let welcomeMessage = formatWelcomeMessage(username);
     if (stringWidth(welcomeMessage) > columns - 4) {

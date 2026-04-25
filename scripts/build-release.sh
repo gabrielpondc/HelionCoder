@@ -4,10 +4,22 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+BUILD_TARGET="${1:-all}"
+WINDOWS_ICON="src/logo/logo.ico"
+
 if ! command -v bun >/dev/null 2>&1; then
   echo "Error: bun is required to build native executables." >&2
   exit 1
 fi
+
+case "$BUILD_TARGET" in
+  all|native|windows|vscode|npm)
+    ;;
+  *)
+    echo "Usage: $0 [all|native|windows|vscode|npm]" >&2
+    exit 1
+    ;;
+esac
 
 EXTERNALS=(
   "@anthropic-ai/bedrock-sdk"
@@ -37,6 +49,10 @@ build_native() {
     args+=(--target="$target")
   fi
 
+  if [[ "$target" == bun-windows-* ]]; then
+    args+=(--windows-icon="$WINDOWS_ICON")
+  fi
+
   for pkg in "${EXTERNALS[@]}"; do
     args+=(--external "$pkg")
   done
@@ -50,33 +66,49 @@ build_native() {
 echo "==> Building CLI bundle"
 npm run build
 
-echo "==> Packaging npm distribution"
-npm run build:npm
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "npm" ]]; then
+  echo "==> Packaging npm distribution"
+  npm run build:npm
+fi
 
-build_native "" "dist/helion-coder"
-build_native "bun-darwin-arm64" "dist/helion-coder-darwin-arm64"
-build_native "bun-darwin-x64" "dist/helion-coder-darwin-x64"
-build_native "bun-linux-x64" "dist/helion-coder-linux-x64"
-build_native "bun-linux-arm64" "dist/helion-coder-linux-arm64"
-build_native "bun-windows-x64" "dist/helion-coder-windows-x64.exe"
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "native" ]]; then
+  build_native "" "dist/helion-coder"
+  build_native "bun-darwin-arm64" "dist/helion-coder-darwin-arm64"
+  build_native "bun-darwin-x64" "dist/helion-coder-darwin-x64"
+  build_native "bun-linux-x64" "dist/helion-coder-linux-x64"
+  build_native "bun-linux-arm64" "dist/helion-coder-linux-arm64"
+  build_native "bun-windows-x64" "dist/helion-coder-windows-x64.exe"
+elif [[ "$BUILD_TARGET" == "windows" ]]; then
+  build_native "bun-windows-x64" "dist/helion-coder-windows-x64.exe"
+fi
 
-echo "==> Packaging VS Code extension"
-npm run package:vscode
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "vscode" ]]; then
+  echo "==> Packaging VS Code extension"
+  npm run package:vscode
+fi
 
 echo "==> Release artifacts"
-ls -lh \
-  dist/helion-coder \
-  dist/helion-coder-darwin-arm64 \
-  dist/helion-coder-darwin-x64 \
-  dist/helion-coder-linux-x64 \
-  dist/helion-coder-linux-arm64 \
-  dist/helion-coder-windows-x64.exe \
-  vscode-extension/helion-coder-vscode-0.1.0.vsix
+if [[ "$BUILD_TARGET" == "windows" ]]; then
+  ls -lh dist/helion-coder-windows-x64.exe
+else
+  ls -lh \
+    dist/helion-coder \
+    dist/helion-coder-darwin-arm64 \
+    dist/helion-coder-darwin-x64 \
+    dist/helion-coder-linux-x64 \
+    dist/helion-coder-linux-arm64 \
+    dist/helion-coder-windows-x64.exe \
+    vscode-extension/helion-coder-vscode-0.1.0.vsix
+fi
 
-file \
-  dist/helion-coder \
-  dist/helion-coder-darwin-arm64 \
-  dist/helion-coder-darwin-x64 \
-  dist/helion-coder-linux-x64 \
-  dist/helion-coder-linux-arm64 \
-  dist/helion-coder-windows-x64.exe
+if [[ "$BUILD_TARGET" == "windows" ]]; then
+  file dist/helion-coder-windows-x64.exe
+else
+  file \
+    dist/helion-coder \
+    dist/helion-coder-darwin-arm64 \
+    dist/helion-coder-darwin-x64 \
+    dist/helion-coder-linux-x64 \
+    dist/helion-coder-linux-arm64 \
+    dist/helion-coder-windows-x64.exe
+fi

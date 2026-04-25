@@ -22,6 +22,7 @@
     "start": "node dist/cli.mjs",
     "build:npm": "node scripts/package-npm.ts",
     "build:release": "bash scripts/build-release.sh",
+    "build:windows": "bash scripts/build-release.sh windows",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",

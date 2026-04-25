@@ -1,4 +1,5 @@
 export const PRODUCT_NAME = 'HelionCoder'
+export const PRODUCT_MARK = '🇭'
 export const CLI_NAME = 'helioncoder'
 export const CONFIG_DIR_NAME = '.helioncoder'
 export const MEMORY_FILE_NAME = 'HELIONCODER.md'
