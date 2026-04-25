@@ -28,7 +28,9 @@ Also check out these two cool projects:
 - [What Is Claude Code?](#what-is-claude-code)
 - [Documentation](#-documentation)
 - [Explore with MCP Server](#-explore-with-mcp-server)
+- [Terminal Commands](#terminal-commands)
 - [Directory Structure](#directory-structure)
+- [Build and Binary Packaging](#build-and-binary-packaging)
 - [Architecture](#architecture)
   - [Tool System](#1-tool-system)
   - [Command System](#2-command-system)
@@ -195,50 +197,278 @@ claude mcp remove claude-code-explorer
 
 ---
 
+## Terminal Commands
+
+Run commands from the repository root.
+
+### Install dependencies
+
+```bash
+# Recommended: use the package manager declared in package.json
+bun install
+
+# Alternative when Bun is not available
+npm install
+```
+
+### Develop locally
+
+```bash
+# Build the Node-compatible CLI bundle into dist/cli.mjs
+bun run build
+
+# Rebuild automatically while editing
+bun run build:watch
+
+# Run the bundled CLI
+bun run start
+
+# Or run the bundle directly
+node dist/cli.mjs --help
+node dist/cli.mjs --version
+```
+
+### Quality checks
+
+```bash
+# TypeScript only
+bun run typecheck
+
+# Biome lint/check
+bun run lint
+
+# Auto-fix lint/format issues in src/
+bun run lint:fix
+bun run format
+
+# Lint + typecheck
+bun run check
+
+# Shell helper: install + check
+./scripts/build.sh
+./scripts/build.sh install
+./scripts/build.sh check
+
+# CI-style pipeline: install, typecheck, lint, production build, verify output
+./scripts/ci-build.sh
+```
+
+### Build auxiliary packages
+
+```bash
+# Web assets
+bun run build:web
+bun run build:web:prod
+
+# VS Code extension
+bun run build:vscode
+bun run package:vscode
+
+# Generate a publishable npm package in dist/npm/
+bun run build:prod
+bun run build:npm
+```
+
+---
+
 ## Directory Structure
+
+### Top-level repository
+
+```
+.
+├── README.md                  # Project overview and usage notes
+├── package.json               # Scripts, dependencies, bin names, package metadata
+├── bun.lock                   # Bun dependency lockfile
+├── package-lock.json          # npm dependency lockfile
+├── tsconfig.json              # TypeScript compiler configuration
+├── biome.json                 # Biome lint/format configuration
+├── bunfig.toml                # Bun configuration
+├── Dockerfile                 # Container build entrypoint
+├── docker/                    # Docker-related assets
+├── docs/                      # Architecture, commands, tools, subsystem guides
+├── prompts/                   # Prompt templates and prompt-related assets
+├── scripts/                   # Build, packaging, CI, and test helper scripts
+├── src/                       # Main CLI TypeScript source snapshot
+├── dist/                      # Generated bundles and binaries
+├── mcp-server/                # Source for the explorer MCP server
+├── vscode-extension/          # VS Code extension package
+└── web/                       # Web UI/assets build target
+```
+
+### Main CLI source
 
 ```
 src/
-├── main.tsx                 # Entrypoint — Commander.js CLI parser + React/Ink renderer
-├── QueryEngine.ts           # Core LLM API caller (~46K lines)
-├── Tool.ts                  # Tool type definitions (~29K lines)
-├── commands.ts              # Command registry (~25K lines)
-├── tools.ts                 # Tool registry
-├── context.ts               # System/user context collection
-├── cost-tracker.ts          # Token cost tracking
+├── entrypoints/
+│   ├── cli.tsx                # CLI entrypoint used by scripts/build-bundle.ts
+│   ├── init.ts                # Runtime initialization
+│   ├── mcp.ts                 # MCP entrypoint
+│   └── sdk/                   # SDK entrypoints
+├── main.tsx                   # Commander.js CLI parser + React/Ink renderer
+├── QueryEngine.ts             # Core LLM API caller (~46K lines)
+├── Tool.ts                    # Tool type definitions (~29K lines)
+├── commands.ts                # Command registry (~25K lines)
+├── tools.ts                   # Tool registry
+├── context.ts                 # System/user context collection
+├── cost-tracker.ts            # Token cost tracking
 │
-├── tools/                   # Agent tool implementations (~40)
-├── commands/                # Slash command implementations (~50)
-├── components/              # Ink UI components (~140)
-├── services/                # External service integrations
-├── hooks/                   # React hooks (incl. permission checks)
-├── types/                   # TypeScript type definitions
-├── utils/                   # Utility functions
-├── screens/                 # Full-screen UIs (Doctor, REPL, Resume)
+├── tools/                     # Agent tool implementations (~40)
+├── commands/                  # Slash command implementations (~50)
+├── components/                # Ink UI components (~140)
+├── services/                  # External service integrations
+├── hooks/                     # React hooks and permission checks
+├── types/                     # TypeScript type definitions
+├── utils/                     # Utility functions
+├── screens/                   # Full-screen UIs (Doctor, REPL, Resume)
 │
-├── bridge/                  # IDE integration (VS Code, JetBrains)
-├── coordinator/             # Multi-agent orchestration
-├── plugins/                 # Plugin system
-├── skills/                  # Skill system
-├── server/                  # Server mode
-├── remote/                  # Remote sessions
-├── memdir/                  # Persistent memory directory
-├── tasks/                   # Task management
-├── state/                   # State management
+├── bridge/                    # IDE integration (VS Code, JetBrains)
+├── coordinator/               # Multi-agent orchestration
+├── plugins/                   # Plugin system
+├── skills/                    # Skill system
+├── server/                    # Server mode
+├── remote/                    # Remote sessions
+├── memdir/                    # Persistent memory directory
+├── tasks/                     # Task management
+├── state/                     # State management
 │
-├── voice/                   # Voice input
-├── vim/                     # Vim mode
-├── keybindings/             # Keybinding configuration
-├── schemas/                 # Config schemas (Zod)
-├── migrations/              # Config migrations
-├── entrypoints/             # Initialization logic
-├── query/                   # Query pipeline
-├── ink/                     # Ink renderer wrapper
-├── buddy/                   # Companion sprite (Easter egg 🐣)
-├── native-ts/               # Native TypeScript utils
-├── outputStyles/            # Output styling
-└── upstreamproxy/           # Proxy configuration
+├── voice/                     # Voice input
+├── vim/                       # Vim mode
+├── keybindings/               # Keybinding configuration
+├── schemas/                   # Config schemas (Zod)
+├── migrations/                # Config migrations
+├── query/                     # Query pipeline
+├── ink/                       # Ink renderer wrapper
+├── native-ts/                 # Native TypeScript utilities
+├── outputStyles/              # Output styling
+└── upstreamproxy/             # Proxy configuration
 ```
+
+### Build outputs
+
+```
+dist/
+├── cli.mjs                    # Node-compatible bundled CLI
+├── cli.mjs.map                # Source map for cli.mjs
+├── meta.json                  # esbuild bundle metadata
+├── npm/                       # Publishable npm package generated by build:npm
+├── helion-coder               # Native binary for the current build host
+├── helion-coder-darwin-arm64  # macOS Apple Silicon binary
+├── helion-coder-darwin-x64    # macOS Intel binary
+├── helion-coder-linux-arm64   # Linux ARM64 binary
+├── helion-coder-linux-x64     # Linux x64 binary
+└── helion-coder-windows-x64.exe # Windows x64 binary
+```
+
+---
+
+## Build and Binary Packaging
+
+This repository has two practical output types:
+
+1. `dist/cli.mjs`: a bundled ESM CLI that runs with Node.js 20+.
+2. `dist/helion-coder-*`: native executables generated with Bun's compile target.
+
+### Build the Node-compatible bundle
+
+```bash
+# Development bundle with source map
+bun run build
+
+# Production bundle with minification
+bun run build:prod
+
+# Production bundle without source map
+bun scripts/build-bundle.ts --minify --no-sourcemap
+
+# Verify the bundle
+node dist/cli.mjs --version
+node dist/cli.mjs --help
+```
+
+`build` and `build:prod` call `scripts/build-bundle.ts`, which bundles `src/entrypoints/cli.tsx` with esbuild and writes `dist/cli.mjs`.
+
+### Generate the npm package
+
+```bash
+bun run build:prod
+bun run build:npm
+
+# Inspect locally
+cd dist/npm
+npm pack --dry-run
+
+# Optional local install test
+npm install -g .
+helioncoder --version
+helion-coder --help
+```
+
+The npm package maps both terminal commands to the same CLI bundle:
+
+```text
+helioncoder  -> dist/npm/cli.mjs
+helion-coder -> dist/npm/cli.mjs
+```
+
+### Compile native binaries for each platform
+
+Bun can cross-compile the bundled entrypoint into single-file executables. Run these commands from the repository root after installing dependencies.
+
+```bash
+# macOS Apple Silicon
+bun build ./src/entrypoints/cli.tsx --compile --target=bun-darwin-arm64 --outfile=dist/helion-coder-darwin-arm64
+
+# macOS Intel
+bun build ./src/entrypoints/cli.tsx --compile --target=bun-darwin-x64 --outfile=dist/helion-coder-darwin-x64
+
+# Linux x64
+bun build ./src/entrypoints/cli.tsx --compile --target=bun-linux-x64 --outfile=dist/helion-coder-linux-x64
+
+# Linux ARM64
+bun build ./src/entrypoints/cli.tsx --compile --target=bun-linux-arm64 --outfile=dist/helion-coder-linux-arm64
+
+# Windows x64
+bun build ./src/entrypoints/cli.tsx --compile --target=bun-windows-x64 --outfile=dist/helion-coder-windows-x64.exe
+```
+
+If you only need a binary for your current platform:
+
+```bash
+bun build ./src/entrypoints/cli.tsx --compile --outfile=dist/helion-coder
+```
+
+Make Unix-like outputs executable if needed:
+
+```bash
+chmod +x dist/helion-coder \
+  dist/helion-coder-darwin-arm64 \
+  dist/helion-coder-darwin-x64 \
+  dist/helion-coder-linux-arm64 \
+  dist/helion-coder-linux-x64
+```
+
+Verify binaries:
+
+```bash
+# Current platform binary
+./dist/helion-coder --version
+./dist/helion-coder --help
+
+# macOS/Linux target built for your current architecture
+./dist/helion-coder-darwin-arm64 --version
+./dist/helion-coder-linux-x64 --version
+
+# Windows, from PowerShell or cmd.exe
+.\\dist\\helion-coder-windows-x64.exe --version
+```
+
+Notes:
+
+- `dist/cli.mjs` is the most portable output for Node.js environments.
+- Native binaries are platform/architecture-specific; test each artifact on its target OS.
+- Cross-compilation support depends on the installed Bun version. This project declares `bun >= 1.1.0`.
+- If imports using the `src/` alias fail during direct `bun build --compile`, first build `dist/cli.mjs` with `bun run build:prod`, then compile the generated bundle for the current platform with `bun build ./dist/cli.mjs --compile --outfile=dist/helion-coder`.
 
 ---
 

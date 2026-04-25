@@ -306,6 +306,18 @@ export function ConsoleOAuthFlow({
       ...current,
       openaiBaseUrl: trimmedBaseUrl || undefined,
       openaiModel: trimmedPrimaryModel,
+      openaiModelOptionsCache:
+        primaryModelOptions.length > 0
+          ? primaryModelOptions
+          : current.openaiModelOptionsCache,
+      openaiModelOptionsCacheBaseUrl:
+        primaryModelOptions.length > 0
+          ? trimmedBaseUrl || DEFAULT_OPENAI_BASE_URL
+          : current.openaiModelOptionsCacheBaseUrl,
+      openaiModelOptionsCacheUpdatedAt:
+        primaryModelOptions.length > 0
+          ? Date.now()
+          : current.openaiModelOptionsCacheUpdatedAt,
       openaiMultimodalApiKey: useSeparateMultimodal
         ? trimmedMultimodalApiKey || current.openaiMultimodalApiKey
         : undefined,

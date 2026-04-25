@@ -21,6 +21,7 @@
     "package:vscode": "npm --prefix vscode-extension run package",
     "start": "node dist/cli.mjs",
     "build:npm": "node scripts/package-npm.ts",
+    "build:release": "bash scripts/build-release.sh",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
     "lint": "biome check src/",

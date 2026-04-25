@@ -3,6 +3,7 @@ import { MODEL_ALIASES } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { getAPIProvider } from './providers.js'
 import { sideQuery } from '../sideQuery.js'
+import { getGlobalConfig } from '../config.js'
 import {
   NotFoundError,
   APIError,
@@ -43,6 +44,14 @@ export async function validateModel(
 
   // Check if it matches ANTHROPIC_CUSTOM_MODEL_OPTION (pre-validated by the user)
   if (normalizedModel === process.env.ANTHROPIC_CUSTOM_MODEL_OPTION) {
+    return { valid: true }
+  }
+
+  if (
+    (getGlobalConfig().openaiModelOptionsCache ?? []).some(
+      model => model.trim().toLowerCase() === lowerModel,
+    )
+  ) {
     return { valid: true }
   }
 
@@ -157,4 +166,3 @@ function get3PFallbackSuggestion(model: string): string | undefined {
   }
   return undefined
 }
-

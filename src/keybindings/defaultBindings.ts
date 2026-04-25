@@ -28,6 +28,7 @@ const SUPPORTS_TERMINAL_VT_MODE =
 // - Windows without VT mode: meta+m (shift+tab doesn't work reliably)
 // - Other platforms: shift+tab
 const MODE_CYCLE_KEY = SUPPORTS_TERMINAL_VT_MODE ? 'shift+tab' : 'meta+m'
+const MODEL_PICKER_KEY = getPlatform() === 'macos' ? 'alt+p' : 'meta+p'
 
 export const DEFAULT_BINDINGS: KeybindingBlock[] = [
   {
@@ -67,7 +68,7 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
       // ctrl+x chord prefix avoids shadowing readline editing keys (ctrl+a/b/e/f/...).
       'ctrl+x ctrl+k': 'chat:killAgents',
       [MODE_CYCLE_KEY]: 'chat:cycleMode',
-      'meta+p': 'chat:modelPicker',
+      [MODEL_PICKER_KEY]: 'chat:modelPicker',
       'meta+o': 'chat:fastMode',
       'meta+t': 'chat:thinkingToggle',
       enter: 'chat:submit',
@@ -338,4 +339,3 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
     },
   },
 ]
-

@@ -266,6 +266,38 @@ function getOpusPlanOption(): ModelOption {
   }
 }
 
+function getOpenAICompatibleModelOptions(): ModelOption[] | null {
+  const cachedModels = getGlobalConfig().openaiModelOptionsCache ?? []
+  if (cachedModels.length === 0) {
+    return null
+  }
+
+  const options: ModelOption[] = [
+    {
+      value: null,
+      label: '默认（推荐）',
+      description: `使用已配置默认模型（${renderDefaultModelSetting(getDefaultMainLoopModelSetting())}）`,
+    },
+  ]
+
+  const seen = new Set<string>()
+  for (const model of cachedModels) {
+    const trimmed = model.trim()
+    const dedupeKey = trimmed.toLowerCase()
+    if (!trimmed || seen.has(dedupeKey)) {
+      continue
+    }
+    seen.add(dedupeKey)
+    options.push({
+      value: trimmed,
+      label: trimmed,
+      description: '来自 /v1/models',
+    })
+  }
+
+  return options.length > 1 ? options : null
+}
+
 // @[MODEL LAUNCH]: Update the model picker lists below to include/reorder options for the new model.
 // Each user tier (ant, Max/Team Premium, Pro/Team Standard/Enterprise, PAYG 1P, PAYG 3P) has its own list.
 function getModelOptionsBase(fastMode = false): ModelOption[] {
@@ -459,7 +491,8 @@ function getKnownModelOption(model: string): ModelOption | null {
 }
 
 export function getModelOptions(fastMode = false): ModelOption[] {
-  const options = getModelOptionsBase(fastMode)
+  const options =
+    getOpenAICompatibleModelOptions() ?? getModelOptionsBase(fastMode)
 
   // Add the custom model from the ANTHROPIC_CUSTOM_MODEL_OPTION env var
   const envCustomModel = process.env.ANTHROPIC_CUSTOM_MODEL_OPTION
@@ -538,4 +571,3 @@ function filterModelOptionsByAllowlist(options: ModelOption[]): ModelOption[] {
       opt.value === null || (opt.value !== null && isModelAllowed(opt.value)),
   )
 }
-

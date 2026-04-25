@@ -15,10 +15,13 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1
 import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
+import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
+import { fetchOpenAIModels, getPrimaryOpenAIConfig } from '../../utils/openaiConfig.js';
 function ModelPickerWrapper(t0) {
-  const $ = _c(17);
+  const $ = _c(18);
   const {
-    onDone
+    onDone,
+    modelLoadWarning
   } = t0;
   const mainLoopModel = useAppState(_temp);
   const mainLoopModelForSession = useAppState(_temp2);
@@ -99,16 +102,17 @@ function ModelPickerWrapper(t0) {
     t3 = $[10];
   }
   let t4;
-  if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3) {
-    t4 = <ModelPicker initial={mainLoopModel} sessionModel={mainLoopModelForSession} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} showFastModeNotice={t3} />;
+  if ($[11] !== handleCancel || $[12] !== handleSelect || $[13] !== mainLoopModel || $[14] !== mainLoopModelForSession || $[15] !== t3 || $[16] !== modelLoadWarning) {
+    t4 = <ModelPicker initial={mainLoopModel} sessionModel={mainLoopModelForSession} onSelect={handleSelect} onCancel={handleCancel} isStandaloneCommand={true} showFastModeNotice={t3} headerText={modelLoadWarning} />;
     $[11] = handleCancel;
     $[12] = handleSelect;
     $[13] = mainLoopModel;
     $[14] = mainLoopModelForSession;
     $[15] = t3;
-    $[16] = t4;
+    $[16] = modelLoadWarning;
+    $[17] = t4;
   } else {
-    t4 = $[16];
+    t4 = $[17];
   }
   return t4;
 }
@@ -268,6 +272,43 @@ function _temp8(s_0) {
 function _temp7(s) {
   return s.mainLoopModel;
 }
+async function refreshOpenAIModelOptionsCache(): Promise<string | undefined> {
+  const config = getPrimaryOpenAIConfig();
+  if (!config.apiKey) {
+    return '未配置 API Key，无法读取 /v1/models。请运行 /api-config 配置接口。';
+  }
+  try {
+    const models = await fetchOpenAIModels({
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl
+    });
+    saveGlobalConfig(current => ({
+      ...current,
+      openaiModelOptionsCache: models,
+      openaiModelOptionsCacheBaseUrl: config.baseUrl,
+      openaiModelOptionsCacheUpdatedAt: Date.now()
+    }));
+    if (models.length === 0) {
+      return '当前接口没有返回模型列表，可以通过 /model <模型名> 手动指定。';
+    }
+    return undefined;
+  } catch (error) {
+    const cachedBaseUrl = getGlobalConfig().openaiModelOptionsCacheBaseUrl;
+    if (cachedBaseUrl && cachedBaseUrl !== config.baseUrl) {
+      saveGlobalConfig(current => ({
+        ...current,
+        openaiModelOptionsCache: undefined,
+        openaiModelOptionsCacheBaseUrl: undefined,
+        openaiModelOptionsCacheUpdatedAt: undefined
+      }));
+      return `读取 /v1/models 失败：${getErrorMessage(error)}。当前 Base URL 与缓存不一致，已不使用旧模型列表。`;
+    }
+    return `读取 /v1/models 失败：${getErrorMessage(error)}。已使用缓存或本地默认模型。`;
+  }
+}
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
   args = args?.trim() || '';
   if (COMMON_INFO_ARGS.includes(args)) {
@@ -288,7 +329,8 @@ export const call: LocalJSXCommandCall = async (onDone, _context, args) => {
     });
     return <SetModelAndClose args={args} onDone={onDone} />;
   }
-  return <ModelPickerWrapper onDone={onDone} />;
+  const modelLoadWarning = await refreshOpenAIModelOptionsCache();
+  return <ModelPickerWrapper onDone={onDone} modelLoadWarning={modelLoadWarning} />;
 };
 function renderModelLabel(model: string | null): string {
   const rendered = renderDefaultModelSetting(model ?? getDefaultMainLoopModelSetting());
