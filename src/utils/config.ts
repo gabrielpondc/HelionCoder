@@ -189,6 +189,7 @@ export type GlobalConfig = {
   openaiApiKey?: string
   openaiBaseUrl?: string
   openaiModel?: string
+  openaiEndpointMode?: 'messages' | 'responses' | 'chat-completions'
   openaiModelOptionsCache?: string[]
   openaiModelOptionsCacheBaseUrl?: string
   openaiModelOptionsCacheUpdatedAt?: number

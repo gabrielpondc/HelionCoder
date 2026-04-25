@@ -33,6 +33,7 @@ import {
   hasExplicitOpenAICompatibleConfig,
   resolveAnthropicCompatibleBaseUrl,
 } from '../../utils/openaiConfig.js'
+import { maybeWrapOpenAIEndpointFetch } from './openaiEndpointAdapter.js'
 
 /**
  * Environment variables for different client types:
@@ -158,6 +159,12 @@ export async function getAnthropicClient({
     fetchOverride,
     source,
     useOpenAICompatibleTransport ? openAICompatibleToken : undefined,
+    useOpenAICompatibleTransport
+      ? {
+          baseUrl: openAIConfig.baseUrl,
+          endpointMode: openAIConfig.endpointMode,
+        }
+      : undefined,
   )
 
   const ARGS = {
@@ -399,9 +406,17 @@ function buildFetch(
   fetchOverride: ClientOptions['fetch'],
   source: string | undefined,
   openAICompatibleToken?: string | null,
+  openAIEndpointOptions?: Parameters<typeof maybeWrapOpenAIEndpointFetch>[1],
 ): ClientOptions['fetch'] {
   // eslint-disable-next-line eslint-plugin-n/no-unsupported-features/node-builtins
   let inner = fetchOverride ?? globalThis.fetch
+
+  if (openAIEndpointOptions) {
+    inner = maybeWrapOpenAIEndpointFetch(
+      inner as typeof globalThis.fetch,
+      openAIEndpointOptions,
+    ) as typeof inner
+  }
 
   // Wrap with x402 payment handler for automatic 402 Payment Required handling
   try {

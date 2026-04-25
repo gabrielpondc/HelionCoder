@@ -7,8 +7,10 @@ import { getGlobalConfig, saveGlobalConfig } from '../utils/config.js'
 import { logError } from '../utils/log.js'
 import {
   DEFAULT_OPENAI_BASE_URL,
+  DEFAULT_OPENAI_ENDPOINT_MODE,
   fetchOpenAIModels,
   getPrimaryOpenAIConfig,
+  type OpenAIEndpointMode,
 } from '../utils/openaiConfig.js'
 import { CLI_NAME, PRODUCT_NAME } from '../utils/brand.js'
 import { Select } from './CustomSelect/select.js'
@@ -29,6 +31,7 @@ type FlowStage =
   | 'primary-model-loading'
   | 'primary-model-select'
   | 'primary-model-input'
+  | 'endpoint-mode-select'
   | 'multimodal-choice'
   | 'mm-api-key'
   | 'mm-base-url'
@@ -159,6 +162,11 @@ export function ConsoleOAuthFlow({
   const [baseUrl, setBaseUrl] = useState(storedConfig.openaiBaseUrl ?? '')
   const [primaryModel, setPrimaryModel] = useState(
     storedConfig.openaiModel ?? primaryConfig.model,
+  )
+  const [endpointMode, setEndpointMode] = useState<OpenAIEndpointMode>(
+    storedConfig.openaiEndpointMode ??
+      primaryConfig.endpointMode ??
+      DEFAULT_OPENAI_ENDPOINT_MODE,
   )
   const [multimodalApiKey, setMultimodalApiKey] = useState('')
   const [multimodalBaseUrl, setMultimodalBaseUrl] = useState(
@@ -306,6 +314,7 @@ export function ConsoleOAuthFlow({
       ...current,
       openaiBaseUrl: trimmedBaseUrl || undefined,
       openaiModel: trimmedPrimaryModel,
+      openaiEndpointMode: endpointMode,
       openaiModelOptionsCache:
         primaryModelOptions.length > 0
           ? primaryModelOptions
@@ -460,7 +469,7 @@ export function ConsoleOAuthFlow({
           }
           setPrimaryModel(trimmed)
           setMultimodalModel(trimmed)
-          setStage('multimodal-choice')
+          setStage('endpoint-mode-select')
           break
         case 'mm-api-key':
           {
@@ -512,6 +521,12 @@ export function ConsoleOAuthFlow({
     const selectedModel = fromModelValue(value)
     setPrimaryModel(selectedModel)
     setMultimodalModel(selectedModel)
+    setStage('endpoint-mode-select')
+  }
+
+  const handleEndpointModeChoice = (value: string): void => {
+    resetInlineErrors()
+    setEndpointMode(value as OpenAIEndpointMode)
     setStage('multimodal-choice')
   }
 
@@ -563,8 +578,7 @@ export function ConsoleOAuthFlow({
       {startingMessage ? <Text>{startingMessage}</Text> : null}
       <Text bold>{PRODUCT_NAME} API 配置</Text>
       <Text dimColor>
-        当前仅使用 OpenAI 兼容接口。配置 Base URL 后会自动读取 /v1/models
-        供你选择默认模型。
+        当前使用 OpenAI 兼容接口。配置 Base URL 后会读取 /v1/models，并让你选择实际调用的接口模式。
       </Text>
       {hasEnvOverride ? (
         <Text dimColor>
@@ -619,6 +633,32 @@ export function ConsoleOAuthFlow({
             defaultValue={toModelValue(primaryModel)}
             onChange={handlePrimaryModelChoice}
             visibleOptionCount={8}
+          />
+        </Box>
+      ) : null}
+
+      {stage === 'endpoint-mode-select' ? (
+        <Box flexDirection="column" gap={1}>
+          <Text dimColor>请选择接口类型：</Text>
+          <Text dimColor>
+            选择服务商实际兼容的协议。选错协议时可能会无响应或报接口错误。
+          </Text>
+          <Select
+            options={[
+              {
+                label: 'OpenAI 兼容',
+                value: 'chat-completions',
+                description: '调用 /v1/chat/completions，多数中转服务使用这个协议',
+              },
+              {
+                label: 'Anthropic 兼容',
+                value: 'messages',
+                description: '调用 /v1/messages，适合 Anthropic/Claude 兼容网关',
+              },
+            ]}
+            defaultValue={endpointMode}
+            onChange={handleEndpointModeChoice}
+            visibleOptionCount={2}
           />
         </Box>
       ) : null}

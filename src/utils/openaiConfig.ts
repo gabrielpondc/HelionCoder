@@ -3,12 +3,16 @@ import { getGlobalConfig } from './config.js'
 export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
 export const DEFAULT_OPENAI_MODEL = 'gpt-5.4'
 export const DEFAULT_OPENAI_SMALL_MODEL = 'gpt-5.4-mini'
+export const DEFAULT_OPENAI_ENDPOINT_MODE = 'chat-completions'
 const DEFAULT_MODEL_LIST_TIMEOUT_MS = 8000
+
+export type OpenAIEndpointMode = 'messages' | 'responses' | 'chat-completions'
 
 type EndpointConfig = {
   apiKey: string | null
   baseUrl: string
   model: string
+  endpointMode: OpenAIEndpointMode
 }
 
 type FetchOpenAIModelsOptions = {
@@ -50,6 +54,7 @@ export function getPrimaryOpenAIConfig(): EndpointConfig {
         config.openaiModel,
         process.env.ANTHROPIC_MODEL,
       ) ?? DEFAULT_OPENAI_MODEL,
+    endpointMode: getOpenAIEndpointMode(),
   }
 }
 
@@ -78,11 +83,25 @@ export function getMultimodalOpenAIConfig(): EndpointConfig {
         config.openaiMultimodalModel,
         primary.model,
       ) ?? DEFAULT_OPENAI_MODEL,
+    endpointMode: primary.endpointMode,
   }
 }
 
 export function hasOpenAIKeyConfigured(): boolean {
   return getPrimaryOpenAIConfig().apiKey !== null
+}
+
+export function hasOpenAIEndpointModeConfigured(): boolean {
+  const config = getGlobalConfig()
+  return Boolean(
+    process.env.OPENAI_ENDPOINT_MODE?.trim() ||
+      process.env.OPENAI_API_MODE?.trim() ||
+      config.openaiEndpointMode,
+  )
+}
+
+export function needsOpenAIEndpointModeSelection(): boolean {
+  return hasOpenAIKeyConfigured() && !hasOpenAIEndpointModeConfigured()
 }
 
 export function hasExplicitOpenAICompatibleConfig(): boolean {
@@ -111,6 +130,52 @@ export function getOpenAIMultimodalModelOverride(): string | undefined {
     process.env.OPENAI_MM_MODEL,
     process.env.OPENAI_MULTIMODAL_MODEL,
     getGlobalConfig().openaiMultimodalModel,
+  )
+}
+
+export function normalizeOpenAIEndpointMode(
+  value: string | null | undefined,
+): OpenAIEndpointMode | undefined {
+  const normalized = value?.trim().toLowerCase()
+  if (!normalized) {
+    return undefined
+  }
+  if (
+    normalized === 'messages' ||
+    normalized === 'anthropic' ||
+    normalized === 'anthropic-messages'
+  ) {
+    return 'messages'
+  }
+  if (
+    normalized === 'responses' ||
+    normalized === 'response' ||
+    normalized === 'openai-response'
+  ) {
+    return 'responses'
+  }
+  if (
+    normalized === 'chat' ||
+    normalized === 'openai' ||
+    normalized === 'openai-compatible' ||
+    normalized === 'chat-completions' ||
+    normalized === 'chat_completions' ||
+    normalized === 'chat-completion'
+  ) {
+    return 'chat-completions'
+  }
+  return undefined
+}
+
+export function getOpenAIEndpointMode(): OpenAIEndpointMode {
+  return (
+    normalizeOpenAIEndpointMode(
+      firstNonEmpty(
+        process.env.OPENAI_ENDPOINT_MODE,
+        process.env.OPENAI_API_MODE,
+        getGlobalConfig().openaiEndpointMode,
+      ),
+    ) ?? DEFAULT_OPENAI_ENDPOINT_MODE
   )
 }
 

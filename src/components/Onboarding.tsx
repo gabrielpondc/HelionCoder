@@ -9,7 +9,7 @@ import { normalizeApiKeyForConfig } from '../utils/authPortable.js';
 import { getCustomApiKeyStatus } from '../utils/config.js';
 import { env } from '../utils/env.js';
 import { isRunningOnHomespace } from '../utils/envUtils.js';
-import { hasOpenAIKeyConfigured } from '../utils/openaiConfig.js';
+import { hasOpenAIKeyConfigured, needsOpenAIEndpointModeSelection } from '../utils/openaiConfig.js';
 import { PRODUCT_NAME } from '../utils/brand.js';
 import type { ThemeSetting } from '../utils/theme.js';
 import { ApproveApiKey } from './ApproveApiKey.js';
@@ -31,7 +31,7 @@ export function Onboarding({
   onDone
 }: Props): React.ReactNode {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [needsApiConfiguration] = useState(() => !hasOpenAIKeyConfigured());
+  const [needsApiConfiguration] = useState(() => !hasOpenAIKeyConfigured() || needsOpenAIEndpointModeSelection());
   const [theme, setTheme] = useTheme();
   useEffect(() => {
     logEvent('tengu_began_setup', {
