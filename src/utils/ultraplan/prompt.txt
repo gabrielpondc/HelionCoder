@@ -1,0 +1,1 @@
+Review the user's request, propose a concise implementation plan, and wait for approval before taking any remote action.

@@ -1,0 +1,5 @@
+export const PRODUCT_NAME = 'HelionCoder'
+export const CLI_NAME = 'helioncoder'
+export const CONFIG_DIR_NAME = '.helioncoder'
+export const MEMORY_FILE_NAME = 'HELIONCODER.md'
+export const LOCAL_MEMORY_FILE_NAME = 'HELIONCODER.local.md'

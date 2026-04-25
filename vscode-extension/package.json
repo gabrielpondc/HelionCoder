@@ -1,0 +1,248 @@
+{
+  "name": "helion-coder-vscode",
+  "displayName": "HelionCoder",
+  "description": "HelionCoder 本地 CLI 的 VS Code 集成，包含助手面板和行内补全。",
+  "version": "0.1.0",
+  "publisher": "local",
+  "license": "UNLICENSED",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:helionCoder.assistantView",
+    "onCommand:helionCoder.openPanel",
+    "onCommand:helionCoder.ask",
+    "onCommand:helionCoder.explainSelection",
+    "onCommand:helionCoder.completeNow",
+    "onCommand:helionCoder.selectModel",
+    "onCommand:helionCoder.refreshModels",
+    "onCommand:helionCoder.configureExecutable",
+    "onCommand:helionCoder.showOutput"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run compile && npx @vscode/vsce package",
+    "check": "tsc --noEmit -p ./"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "helionCoder.openPanel",
+        "title": "打开助手面板",
+        "category": "HelionCoder",
+        "icon": {
+          "light": "media/icon.svg",
+          "dark": "media/icon.svg"
+        }
+      },
+      {
+        "command": "helionCoder.ask",
+        "title": "询问 HelionCoder",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.explainSelection",
+        "title": "解释选区",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.completeNow",
+        "title": "触发行内补全",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.selectModel",
+        "title": "选择模型",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.refreshModels",
+        "title": "刷新模型列表",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.configureExecutable",
+        "title": "配置 CLI 可执行文件",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.showOutput",
+        "title": "显示输出",
+        "category": "HelionCoder"
+      }
+    ],
+    "configuration": {
+      "title": "HelionCoder",
+      "properties": {
+        "helionCoder.executablePath": {
+          "type": "string",
+          "default": "",
+          "description": "HelionCoder 可执行文件路径。留空会自动检测 dist/helion-coder、dist/cli.mjs 或 PATH 中的 helion-coder。"
+        },
+        "helionCoder.defaultArgs": {
+          "type": "array",
+          "default": [
+            "--bare",
+            "--no-session-persistence"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "插件调用 CLI 时追加在 -p 前面的参数。"
+        },
+        "helionCoder.model": {
+          "type": "string",
+          "default": "",
+          "description": "通过 --model 传给 helion-coder 的模型。留空使用 CLI 默认模型。"
+        },
+        "helionCoder.effort": {
+          "type": "string",
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "max"
+          ],
+          "default": "",
+          "description": "通过 --effort 传给 helion-coder 的推理强度。留空使用自动/默认强度。"
+        },
+        "helionCoder.models": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "description": "额外显示在模型选择器中的模型 ID。"
+        },
+        "helionCoder.autoDetectModels": {
+          "type": "boolean",
+          "default": true,
+          "description": "在凭据可用时，从配置文件、环境变量和 OpenAI 兼容 /models 自动检测模型。"
+        },
+        "helionCoder.modelListTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 1000,
+          "description": "请求 OpenAI 兼容 /models 端点时的最长等待时间。"
+        },
+        "helionCoder.completion.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "启用 HelionCoder 行内补全。"
+        },
+        "helionCoder.completion.triggerMode": {
+          "type": "string",
+          "enum": [
+            "manual",
+            "automatic"
+          ],
+          "default": "manual",
+          "description": "manual（手动）只通过 HelionCoder 命令触发补全；automatic（自动）允许 VS Code 在输入时请求建议。"
+        },
+        "helionCoder.completion.timeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "description": "等待行内补全响应的最长时间。"
+        },
+        "helionCoder.completion.maxPrefixChars": {
+          "type": "number",
+          "default": 5000,
+          "minimum": 500,
+          "description": "发送给补全提示的光标前最大字符数。"
+        },
+        "helionCoder.completion.maxSuffixChars": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 0,
+          "description": "发送给补全提示的光标后最大字符数。"
+        },
+        "helionCoder.webview.includeEditorContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "从助手面板提问时，包含活动编辑器路径、选中文本和附近代码。"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "helionCoder",
+          "title": "HelionCoder",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "helionCoder": [
+        {
+          "id": "helionCoder.assistantView",
+          "name": "HelionCoder",
+          "type": "webview"
+        }
+      ]
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "helionCoder.openPanel",
+          "group": "navigation@99"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "helionCoder.explainSelection",
+          "when": "editorHasSelection",
+          "group": "helionCoder@1"
+        },
+        {
+          "command": "helionCoder.completeNow",
+          "when": "editorTextFocus",
+          "group": "helionCoder@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "helionCoder.openPanel"
+        },
+        {
+          "command": "helionCoder.ask"
+        },
+        {
+          "command": "helionCoder.explainSelection"
+        },
+        {
+          "command": "helionCoder.completeNow"
+        },
+        {
+          "command": "helionCoder.selectModel"
+        },
+        {
+          "command": "helionCoder.refreshModels"
+        },
+        {
+          "command": "helionCoder.configureExecutable"
+        },
+        {
+          "command": "helionCoder.showOutput"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^2.15.0",
+    "typescript": "^5.4.5"
+  }
+}
