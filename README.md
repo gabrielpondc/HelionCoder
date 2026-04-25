@@ -1,419 +1,235 @@
-<div align="center">
 
-# Claude Code Source Snapshot
+# HelionCoder
 
-**An exploratory mirror of a source snapshot reportedly exposed via published source maps on March 31, 2026**
+HelionCoder 是一个基于 OpenAI 兼容 API 的终端 AI 编程 CLI。项目包含主 CLI、可选的 Web 终端资源、VS Code 插件，以及用于探索 Claude Code 源码快照的 MCP Server。
 
-[![TypeScript](https://img.shields.io/badge/TypeScript-512K%2B_lines-3178C6?logo=typescript&logoColor=white)](#tech-stack)
-[![Bun](https://img.shields.io/badge/Runtime-Bun-f472b6?logo=bun&logoColor=white)](#tech-stack)
-[![Files](https://img.shields.io/badge/~1,900_files-source_only-grey)](#directory-structure)
-[![MCP Server](https://img.shields.io/badge/MCP-Explorer_Server-blueviolet)](#-explore-with-mcp-server)
-</div>
+## 项目内容
 
-Also check out these two cool projects:
-1. [claude_agent_teams_ui](https://github.com/777genius/claude_agent_teams_ui) - You're the CTO, agents are your team. They handle tasks themselves, message each other, review each other's code. You just look at the kanban board and drink coffee.
-2. [claude-notifications-go](https://github.com/777genius/claude-notifications-go) - 🔔 Cross-platform smart notifications plugin for Claude Code. 6 types. Click-to-focus. 1 line installation.
+- `src/`：主 CLI 源码，入口为 `src/entrypoints/cli.tsx`。
+- `scripts/`：构建、打包、发布辅助脚本。
+- `dist/`：构建产物目录，包含 `cli.mjs`、bundle 元数据和可执行文件。
+- `docs/`：架构、命令、工具和子系统说明。
+- `mcp-server/`：源码探索 MCP Server，支持 STDIO、HTTP 和 SSE。
+- `vscode-extension/`：HelionCoder VS Code 插件。
+- `web/`：Web UI / 资源相关子项目。
+- `prompts/`：提示词模板和相关资源。
 
-   
+## 环境要求
 
-> The raw imported snapshot is preserved in this repository's [`backup` branch](https://github.com/777genius/claude-code-source-code/tree/backup). The `main` branch contains added documentation, tooling, and repository metadata.
+- Bun `>= 1.1.0`（推荐，项目 `packageManager` 为 `bun@1.1.0`）
+- Node.js 20+（运行 `dist/cli.mjs`）
+- npm（用于部分子项目或无 Bun 环境）
 
-
-
----
-
-## Table of Contents
-
-- [How It Leaked](#how-it-leaked)
-- [What Is Claude Code?](#what-is-claude-code)
-- [Documentation](#-documentation)
-- [Explore with MCP Server](#-explore-with-mcp-server)
-- [Terminal Commands](#terminal-commands)
-- [Directory Structure](#directory-structure)
-- [Build and Binary Packaging](#build-and-binary-packaging)
-- [Architecture](#architecture)
-  - [Tool System](#1-tool-system)
-  - [Command System](#2-command-system)
-  - [Service Layer](#3-service-layer)
-  - [Bridge System](#4-bridge-system)
-  - [Permission System](#5-permission-system)
-  - [Feature Flags](#6-feature-flags)
-- [Key Files](#key-files)
-- [Tech Stack](#tech-stack)
-- [Design Patterns](#design-patterns)
-- [GitPretty Setup](#gitpretty-setup)
-- [Contributing](#contributing)
-- [Disclaimer](#disclaimer)
-
----
-
-## How It Leaked
-
-[Chaofan Shou (@Fried_rice)](https://x.com/Fried_rice) discovered that the published npm package for Claude Code included a `.map` file referencing the full, unobfuscated TypeScript source — downloadable as a zip from Anthropic's R2 storage bucket.
-
-> **"Claude code source code has been leaked via a map file in their npm registry!"**
->
-> — [@Fried_rice, March 31, 2026](https://x.com/Fried_rice/status/2038894956459290963)
-
----
-
-## What Is Claude Code?
-
-Claude Code is Anthropic's official CLI tool for interacting with Claude directly from the terminal: editing files, running commands, searching codebases, managing git workflows, and more. This repository contains a source snapshot together with added docs, MCP tooling, and repository metadata to help inspect it.
-
-| | |
-|---|---|
-| **Leaked** | 2026-03-31 |
-| **Language** | TypeScript (strict) |
-| **Runtime** | [Bun](https://bun.sh) |
-| **Terminal UI** | [React](https://react.dev) + [Ink](https://github.com/vadimdemedes/ink) |
-| **Scale** | ~1,900 files · 512,000+ lines of code |
-
----
-
-## Documentation
-
-For in-depth guides, see the [`docs/`](docs/) directory:
-
-| Guide | Description |
-|-------|-------------|
-| **[Architecture](docs/architecture.md)** | Core pipeline, startup sequence, state management, rendering, data flow |
-| **[Tools Reference](docs/tools.md)** | Complete catalog of all ~40 agent tools with categories and permission model |
-| **[Commands Reference](docs/commands.md)** | All ~85 slash commands organized by category |
-| **[Subsystems Guide](docs/subsystems.md)** | Deep dives into Bridge, MCP, Permissions, Plugins, Skills, Tasks, Memory, Voice |
-| **[Exploration Guide](docs/exploration-guide.md)** | How to navigate the codebase — study paths, grep patterns, key files |
-
-Also see: [CONTRIBUTING.md](CONTRIBUTING.md) · [MCP Server README](mcp-server/README.md)
-
----
-
-## Explore with MCP Server
-
-This repo also ships an [MCP server](https://modelcontextprotocol.io/) that lets any MCP-compatible client (Claude Code, Claude Desktop, VS Code Copilot, Cursor) explore the snapshot interactively.
-
-### Install from npm
-
-The MCP server is published as [`claude-code-explorer-mcp`](https://www.npmjs.com/package/claude-code-explorer-mcp) on npm — no need to clone the repo:
+安装依赖：
 
 ```bash
-# Claude Code
-claude mcp add claude-code-explorer -- npx -y claude-code-explorer-mcp
-```
-
-### One-liner setup (from source)
-
-```bash
-git clone https://github.com/777genius/claude-code-source-code.git ~/claude-code-source-code \
-  && cd ~/claude-code-source-code/mcp-server \
-  && npm install && npm run build \
-  && claude mcp add claude-code-explorer -- node ~/claude-code-source-code/mcp-server/dist/index.js
-```
-
-<details>
-<summary><strong>Step-by-step setup</strong></summary>
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/777genius/claude-code-source-code.git
-cd claude-code-source-code/mcp-server
-
-# 2. Install & build
-npm install && npm run build
-
-# 3. Register with Claude Code
-claude mcp add claude-code-explorer -- node /absolute/path/to/claude-code-source-code/mcp-server/dist/index.js
-```
-
-Replace `/absolute/path/to/claude-code-source-code` with your actual clone path.
-
-</details>
-
-<details>
-<summary><strong>VS Code / Cursor / Claude Desktop config</strong></summary>
-
-**VS Code** — add to `.vscode/mcp.json`:
-```json
-{
-  "servers": {
-    "claude-code-explorer": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["${workspaceFolder}/mcp-server/dist/index.js"],
-      "env": { "CLAUDE_CODE_SRC_ROOT": "${workspaceFolder}/src" }
-    }
-  }
-}
-```
-
-**Claude Desktop** — add to your config file:
-```json
-{
-  "mcpServers": {
-    "claude-code-explorer": {
-      "command": "node",
-      "args": ["/absolute/path/to/claude-code-source-code/mcp-server/dist/index.js"],
-      "env": { "CLAUDE_CODE_SRC_ROOT": "/absolute/path/to/claude-code-source-code/src" }
-    }
-  }
-}
-```
-
-**Cursor** — add to `~/.cursor/mcp.json` (same format as Claude Desktop).
-
-</details>
-
-### Available tools & prompts
-
-| Tool | Description |
-|------|-------------|
-| `list_tools` | List all ~40 agent tools with source files |
-| `list_commands` | List all ~50 slash commands with source files |
-| `get_tool_source` | Read full source of any tool (e.g. BashTool, FileEditTool) |
-| `get_command_source` | Read source of any slash command (e.g. review, mcp) |
-| `read_source_file` | Read any file from `src/` by path |
-| `search_source` | Grep across the entire source tree |
-| `list_directory` | Browse `src/` directories |
-| `get_architecture` | High-level architecture overview |
-
-| Prompt | Description |
-|--------|-------------|
-| `explain_tool` | Deep-dive into how a specific tool works |
-| `explain_command` | Understand a slash command's implementation |
-| `architecture_overview` | Guided tour of the full architecture |
-| `how_does_it_work` | Explain any subsystem (permissions, MCP, bridge, etc.) |
-| `compare_tools` | Side-by-side comparison of two tools |
-
-**Try asking:** *"How does the BashTool work?"* · *"Search for where permissions are checked"* · *"Show me the /review command source"*
-
-### Custom source path / Remove
-
-```bash
-# Custom source location
-claude mcp add claude-code-explorer -e CLAUDE_CODE_SRC_ROOT=/path/to/src -- node /path/to/mcp-server/dist/index.js
-
-# Remove
-claude mcp remove claude-code-explorer
-```
-
----
-
-## Terminal Commands
-
-Run commands from the repository root.
-
-### Install dependencies
-
-```bash
-# Recommended: use the package manager declared in package.json
 bun install
+```
 
-# Alternative when Bun is not available
+如果没有 Bun，也可以使用：
+
+```bash
 npm install
 ```
 
-### Develop locally
+## 基础配置
+
+项目提供 `.env.example` 作为环境变量模板：
 
 ```bash
-# Build the Node-compatible CLI bundle into dist/cli.mjs
+cp .env.example .env
+```
+
+常用配置项：
+
+```bash
+# 推荐：OpenAI 兼容 API Key
+OPENAI_API_KEY=your_api_key
+
+# OpenAI 兼容 API Base URL，默认 https://api.openai.com/v1
+OPENAI_BASE_URL=https://api.openai.com/v1
+
+# 默认模型，默认 gpt-5.4
+OPENAI_MODEL=your-model
+
+# 小模型 / 快速模型，默认 gpt-5.4-mini
+OPENAI_SMALL_MODEL=your-fast-model
+
+# 多模态接口可单独配置；不配置时复用上面的主接口
+OPENAI_MM_API_KEY=your_multimodal_api_key
+OPENAI_MM_BASE_URL=https://api.openai.com/v1
+OPENAI_MM_MODEL=your-multimodal-model
+
+# 兼容旧配置：代码中仍会把 ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL
+# 作为 OpenAI 配置的后备来源读取，但新配置建议优先使用 OPENAI_*。
+ANTHROPIC_API_KEY=your_api_key
+ANTHROPIC_BASE_URL=https://api.openai.com/v1
+ANTHROPIC_MODEL=your-model
+
+# 禁用遥测
+DISABLE_TELEMETRY=true
+```
+
+### 第三方 / 中转服务
+
+当前 HelionCoder 的主链路是 OpenAI Responses API。接入第三方模型服务、代理网关或兼容 OpenAI 的中转服务时，通常只需要改 `OPENAI_BASE_URL`、`OPENAI_API_KEY` 和模型名：
+
+```bash
+OPENAI_API_KEY=your_provider_key
+OPENAI_BASE_URL=https://your-provider.example.com/v1
+OPENAI_MODEL=your-provider-model
+OPENAI_SMALL_MODEL=your-provider-fast-model
+```
+
+如果服务商把 Responses、Models 等端点放在标准 `/v1` 下，配置到 `/v1` 即可；代码会按需请求 `/v1/responses`、`/v1/models` 等资源。
+
+多模态模型可以单独配置：
+
+```bash
+OPENAI_MM_API_KEY=your_provider_key
+OPENAI_MM_BASE_URL=https://your-provider.example.com/v1
+OPENAI_MM_MODEL=your-vision-model
+```
+
+`CLAUDE_CODE_USE_BEDROCK`、`CLAUDE_CODE_USE_VERTEX`、`CLAUDE_CODE_USE_FOUNDRY` 等变量来自上游 Claude Code 源码快照的历史路径，不是这个 OpenAI Responses 版本的推荐接入方式。
+
+## 本地开发
+
+构建主 CLI：
+
+```bash
 bun run build
+```
 
-# Rebuild automatically while editing
+监听构建：
+
+```bash
 bun run build:watch
+```
 
-# Run the bundled CLI
+运行构建后的 CLI：
+
+```bash
 bun run start
+# 等价于
+node dist/cli.mjs
+```
 
-# Or run the bundle directly
+查看帮助或版本：
+
+```bash
 node dist/cli.mjs --help
 node dist/cli.mjs --version
 ```
 
-### Quality checks
+## 编译与打包流程
+
+### 1. 开发构建
 
 ```bash
-# TypeScript only
-bun run typecheck
-
-# Biome lint/check
-bun run lint
-
-# Auto-fix lint/format issues in src/
-bun run lint:fix
-bun run format
-
-# Lint + typecheck
-bun run check
-
-# Shell helper: install + check
-./scripts/build.sh
-./scripts/build.sh install
-./scripts/build.sh check
-
-# CI-style pipeline: install, typecheck, lint, production build, verify output
-./scripts/ci-build.sh
+bun run build
 ```
 
-### Build auxiliary packages
+该命令执行 `scripts/build-bundle.ts`，使用 esbuild 将 `src/entrypoints/cli.tsx` 打包到：
+
+```text
+dist/cli.mjs
+```
+
+同时会生成 sourcemap 和 `dist/meta.json` bundle 元数据。
+
+### 2. 生产构建
 
 ```bash
-# Web assets
+bun run build:prod
+```
+
+生产构建会开启压缩，输出仍在 `dist/`。
+
+如果需要关闭 sourcemap：
+
+```bash
+bun scripts/build-bundle.ts --minify --no-sourcemap
+```
+
+### 3. 构建 Web 资源
+
+```bash
 bun run build:web
 bun run build:web:prod
+```
 
-# VS Code extension
+对应脚本为 `scripts/build-web.ts`，入口是：
+
+```text
+src/server/web/terminal.ts
+```
+
+输出到：
+
+```text
+src/server/web/public/
+```
+
+### 4. 构建 VS Code 插件
+
+```bash
 bun run build:vscode
+```
+
+打包 VS Code 插件：
+
+```bash
 bun run package:vscode
-
-# Generate a publishable npm package in dist/npm/
-bun run build:prod
-bun run build:npm
 ```
 
----
-
-## Directory Structure
-
-### Top-level repository
-
-```
-.
-├── README.md                  # Project overview and usage notes
-├── package.json               # Scripts, dependencies, bin names, package metadata
-├── bun.lock                   # Bun dependency lockfile
-├── package-lock.json          # npm dependency lockfile
-├── tsconfig.json              # TypeScript compiler configuration
-├── biome.json                 # Biome lint/format configuration
-├── bunfig.toml                # Bun configuration
-├── Dockerfile                 # Container build entrypoint
-├── docker/                    # Docker-related assets
-├── docs/                      # Architecture, commands, tools, subsystem guides
-├── prompts/                   # Prompt templates and prompt-related assets
-├── scripts/                   # Build, packaging, CI, and test helper scripts
-├── src/                       # Main CLI TypeScript source snapshot
-├── dist/                      # Generated bundles and binaries
-├── mcp-server/                # Source for the explorer MCP server
-├── vscode-extension/          # VS Code extension package
-└── web/                       # Web UI/assets build target
-```
-
-### Main CLI source
-
-```
-src/
-├── entrypoints/
-│   ├── cli.tsx                # CLI entrypoint used by scripts/build-bundle.ts
-│   ├── init.ts                # Runtime initialization
-│   ├── mcp.ts                 # MCP entrypoint
-│   └── sdk/                   # SDK entrypoints
-├── main.tsx                   # Commander.js CLI parser + React/Ink renderer
-├── QueryEngine.ts             # Core LLM API caller (~46K lines)
-├── Tool.ts                    # Tool type definitions (~29K lines)
-├── commands.ts                # Command registry (~25K lines)
-├── tools.ts                   # Tool registry
-├── context.ts                 # System/user context collection
-├── cost-tracker.ts            # Token cost tracking
-│
-├── tools/                     # Agent tool implementations (~40)
-├── commands/                  # Slash command implementations (~50)
-├── components/                # Ink UI components (~140)
-├── services/                  # External service integrations
-├── hooks/                     # React hooks and permission checks
-├── types/                     # TypeScript type definitions
-├── utils/                     # Utility functions
-├── screens/                   # Full-screen UIs (Doctor, REPL, Resume)
-│
-├── bridge/                    # IDE integration (VS Code, JetBrains)
-├── coordinator/               # Multi-agent orchestration
-├── plugins/                   # Plugin system
-├── skills/                    # Skill system
-├── server/                    # Server mode
-├── remote/                    # Remote sessions
-├── memdir/                    # Persistent memory directory
-├── tasks/                     # Task management
-├── state/                     # State management
-│
-├── voice/                     # Voice input
-├── vim/                       # Vim mode
-├── keybindings/               # Keybinding configuration
-├── schemas/                   # Config schemas (Zod)
-├── migrations/                # Config migrations
-├── query/                     # Query pipeline
-├── ink/                       # Ink renderer wrapper
-├── native-ts/                 # Native TypeScript utilities
-├── outputStyles/              # Output styling
-└── upstreamproxy/             # Proxy configuration
-```
-
-### Build outputs
-
-```
-dist/
-├── cli.mjs                    # Node-compatible bundled CLI
-├── cli.mjs.map                # Source map for cli.mjs
-├── meta.json                  # esbuild bundle metadata
-├── npm/                       # Publishable npm package generated by build:npm
-├── helion-coder               # Native binary for the current build host
-├── helion-coder-darwin-arm64  # macOS Apple Silicon binary
-├── helion-coder-darwin-x64    # macOS Intel binary
-├── helion-coder-linux-arm64   # Linux ARM64 binary
-├── helion-coder-linux-x64     # Linux x64 binary
-└── helion-coder-windows-x64.exe # Windows x64 binary
-```
-
----
-
-## Build and Binary Packaging
-
-This repository has two practical output types:
-
-1. `dist/cli.mjs`: a bundled ESM CLI that runs with Node.js 20+.
-2. `dist/helion-coder-*`: native executables generated with Bun's compile target.
-
-### Build the Node-compatible bundle
+也可以进入插件目录单独开发：
 
 ```bash
-# Development bundle with source map
-bun run build
-
-# Production bundle with minification
-bun run build:prod
-
-# Production bundle without source map
-bun scripts/build-bundle.ts --minify --no-sourcemap
-
-# Verify the bundle
-node dist/cli.mjs --version
-node dist/cli.mjs --help
+cd vscode-extension
+npm install
+npm run compile
 ```
 
-`build` and `build:prod` call `scripts/build-bundle.ts`, which bundles `src/entrypoints/cli.tsx` with esbuild and writes `dist/cli.mjs`.
+然后在 VS Code 中打开 `vscode-extension/`，按 `F5` 启动插件开发宿主。
 
-### Generate the npm package
+### 5. 生成 npm 包
 
 ```bash
 bun run build:prod
 bun run build:npm
+```
 
-# Inspect locally
+产物位于：
+
+```text
+dist/npm/
+```
+
+本地检查：
+
+```bash
 cd dist/npm
 npm pack --dry-run
+```
 
-# Optional local install test
+本地全局安装测试：
+
+```bash
 npm install -g .
 helioncoder --version
 helion-coder --help
 ```
 
-The npm package maps both terminal commands to the same CLI bundle:
+### 6. 编译原生可执行文件
 
-```text
-helioncoder  -> dist/npm/cli.mjs
-helion-coder -> dist/npm/cli.mjs
+为当前平台编译：
+
+```bash
+bun build ./src/entrypoints/cli.tsx --compile --outfile=dist/helion-coder
 ```
 
-### Compile native binaries for each platform
-
-Bun can cross-compile the bundled entrypoint into single-file executables. Run these commands from the repository root after installing dependencies.
+跨平台示例：
 
 ```bash
 # macOS Apple Silicon
@@ -432,249 +248,117 @@ bun build ./src/entrypoints/cli.tsx --compile --target=bun-linux-arm64 --outfile
 bun build ./src/entrypoints/cli.tsx --compile --target=bun-windows-x64 --outfile=dist/helion-coder-windows-x64.exe
 ```
 
-If you only need a binary for your current platform:
+如遇到 `src/` alias 解析问题，先构建 Node bundle，再编译 bundle：
 
 ```bash
-bun build ./src/entrypoints/cli.tsx --compile --outfile=dist/helion-coder
+bun run build:prod
+bun build ./dist/cli.mjs --compile --outfile=dist/helion-coder
 ```
 
-Make Unix-like outputs executable if needed:
+验证：
 
 ```bash
-chmod +x dist/helion-coder \
-  dist/helion-coder-darwin-arm64 \
-  dist/helion-coder-darwin-x64 \
-  dist/helion-coder-linux-arm64 \
-  dist/helion-coder-linux-x64
-```
-
-Verify binaries:
-
-```bash
-# Current platform binary
 ./dist/helion-coder --version
 ./dist/helion-coder --help
-
-# macOS/Linux target built for your current architecture
-./dist/helion-coder-darwin-arm64 --version
-./dist/helion-coder-linux-x64 --version
-
-# Windows, from PowerShell or cmd.exe
-.\\dist\\helion-coder-windows-x64.exe --version
 ```
 
-Notes:
-
-- `dist/cli.mjs` is the most portable output for Node.js environments.
-- Native binaries are platform/architecture-specific; test each artifact on its target OS.
-- Cross-compilation support depends on the installed Bun version. This project declares `bun >= 1.1.0`.
-- If imports using the `src/` alias fail during direct `bun build --compile`, first build `dist/cli.mjs` with `bun run build:prod`, then compile the generated bundle for the current platform with `bun build ./dist/cli.mjs --compile --outfile=dist/helion-coder`.
-
----
-
-## Architecture
-
-### 1. Tool System
-
-> `src/tools/` — Every tool Claude can invoke is a self-contained module with its own input schema, permission model, and execution logic.
-
-| Tool | Description |
-|---|---|
-| **File I/O** | |
-| `FileReadTool` | Read files (images, PDFs, notebooks) |
-| `FileWriteTool` | Create / overwrite files |
-| `FileEditTool` | Partial modification (string replacement) |
-| `NotebookEditTool` | Jupyter notebook editing |
-| **Search** | |
-| `GlobTool` | File pattern matching |
-| `GrepTool` | ripgrep-based content search |
-| `WebSearchTool` | Web search |
-| `WebFetchTool` | Fetch URL content |
-| **Execution** | |
-| `BashTool` | Shell command execution |
-| `SkillTool` | Skill execution |
-| `MCPTool` | MCP server tool invocation |
-| `LSPTool` | Language Server Protocol integration |
-| **Agents & Teams** | |
-| `AgentTool` | Sub-agent spawning |
-| `SendMessageTool` | Inter-agent messaging |
-| `TeamCreateTool` / `TeamDeleteTool` | Team management |
-| `TaskCreateTool` / `TaskUpdateTool` | Task management |
-| **Mode & State** | |
-| `EnterPlanModeTool` / `ExitPlanModeTool` | Plan mode toggle |
-| `EnterWorktreeTool` / `ExitWorktreeTool` | Git worktree isolation |
-| `ToolSearchTool` | Deferred tool discovery |
-| `SleepTool` | Proactive mode wait |
-| `CronCreateTool` | Scheduled triggers |
-| `RemoteTriggerTool` | Remote trigger |
-| `SyntheticOutputTool` | Structured output generation |
-
-### 2. Command System
-
-> `src/commands/` — User-facing slash commands invoked with `/` in the REPL.
-
-| Command | Description | | Command | Description |
-|---|---|---|---|---|
-| `/commit` | Git commit | | `/memory` | Persistent memory |
-| `/review` | Code review | | `/skills` | Skill management |
-| `/compact` | Context compression | | `/tasks` | Task management |
-| `/mcp` | MCP server management | | `/vim` | Vim mode toggle |
-| `/config` | Settings | | `/diff` | View changes |
-| `/doctor` | Environment diagnostics | | `/cost` | Check usage cost |
-| `/login` / `/logout` | Auth | | `/theme` | Change theme |
-| `/context` | Context visualization | | `/share` | Share session |
-| `/pr_comments` | PR comments | | `/resume` | Restore session |
-| `/desktop` | Desktop handoff | | `/mobile` | Mobile handoff |
-
-### 3. Service Layer
-
-> `src/services/` — External integrations and core infrastructure.
-
-| Service | Description |
-|---|---|
-| `api/` | Anthropic API client, file API, bootstrap |
-| `mcp/` | Model Context Protocol connection & management |
-| `oauth/` | OAuth 2.0 authentication |
-| `lsp/` | Language Server Protocol manager |
-| `analytics/` | GrowthBook feature flags & analytics |
-| `plugins/` | Plugin loader |
-| `compact/` | Conversation context compression |
-| `extractMemories/` | Automatic memory extraction |
-| `teamMemorySync/` | Team memory synchronization |
-| `tokenEstimation.ts` | Token count estimation |
-| `policyLimits/` | Organization policy limits |
-| `remoteManagedSettings/` | Remote managed settings |
-
-### 4. Bridge System
-
-> `src/bridge/` — Bidirectional communication layer connecting IDE extensions (VS Code, JetBrains) with the CLI.
-
-Key files: `bridgeMain.ts` (main loop) · `bridgeMessaging.ts` (protocol) · `bridgePermissionCallbacks.ts` (permission callbacks) · `replBridge.ts` (REPL session) · `jwtUtils.ts` (JWT auth) · `sessionRunner.ts` (session execution)
-
-### 5. Permission System
-
-> `src/hooks/toolPermission/` — Checks permissions on every tool invocation.
-
-Prompts the user for approval/denial or auto-resolves based on the configured permission mode: `default`, `plan`, `bypassPermissions`, `auto`, etc.
-
-### 6. Feature Flags
-
-Dead code elimination at build time via Bun's `bun:bundle`:
-
-```typescript
-import { feature } from 'bun:bundle'
-
-const voiceCommand = feature('VOICE_MODE')
-  ? require('./commands/voice/index.js').default
-  : null
-```
-
-Notable flags: `PROACTIVE` · `KAIROS` · `BRIDGE_MODE` · `DAEMON` · `VOICE_MODE` · `AGENT_TRIGGERS` · `MONITOR_TOOL`
-
----
-
-## Key Files
-
-| File | Lines | Purpose |
-|------|------:|---------|
-| `QueryEngine.ts` | ~46K | Core LLM API engine — streaming, tool loops, thinking mode, retries, token counting |
-| `Tool.ts` | ~29K | Base types/interfaces for all tools — input schemas, permissions, progress state |
-| `commands.ts` | ~25K | Command registration & execution with conditional per-environment imports |
-| `main.tsx` | — | CLI parser + React/Ink renderer; parallelizes MDM, keychain, and GrowthBook on startup |
-
----
-
-## Tech Stack
-
-| Category | Technology |
-|---|---|
-| Runtime | [Bun](https://bun.sh) |
-| Language | TypeScript (strict) |
-| Terminal UI | [React](https://react.dev) + [Ink](https://github.com/vadimdemedes/ink) |
-| CLI Parsing | [Commander.js](https://github.com/tj/commander.js) (extra-typings) |
-| Schema Validation | [Zod v4](https://zod.dev) |
-| Code Search | [ripgrep](https://github.com/BurntSushi/ripgrep) (via GrepTool) |
-| Protocols | [MCP SDK](https://modelcontextprotocol.io) · LSP |
-| API | [Anthropic SDK](https://docs.anthropic.com) |
-| Telemetry | OpenTelemetry + gRPC |
-| Feature Flags | GrowthBook |
-| Auth | OAuth 2.0 · JWT · macOS Keychain |
-
----
-
-## Design Patterns
-
-<details>
-<summary><strong>Parallel Prefetch</strong> — Startup optimization</summary>
-
-MDM settings, keychain reads, and API preconnect fire in parallel as side-effects before heavy module evaluation:
-
-```typescript
-// main.tsx
-startMdmRawRead()
-startKeychainPrefetch()
-```
-
-</details>
-
-<details>
-<summary><strong>Lazy Loading</strong> — Deferred heavy modules</summary>
-
-OpenTelemetry (~400KB) and gRPC (~700KB) are loaded via dynamic `import()` only when needed.
-
-</details>
-
-<details>
-<summary><strong>Agent Swarms</strong> — Multi-agent orchestration</summary>
-
-Sub-agents spawn via `AgentTool`, with `coordinator/` handling orchestration. `TeamCreateTool` enables team-level parallel work.
-
-</details>
-
-<details>
-<summary><strong>Skill System</strong> — Reusable workflows</summary>
-
-Defined in `skills/` and executed through `SkillTool`. Users can add custom skills.
-
-</details>
-
-<details>
-<summary><strong>Plugin Architecture</strong> — Extensibility</summary>
-
-Built-in and third-party plugins loaded through the `plugins/` subsystem.
-
-</details>
-
----
-
-## GitPretty Setup
-
-<details>
-<summary>Show per-file emoji commit messages in GitHub's file UI</summary>
+## 质量检查
 
 ```bash
-# Apply emoji commits
-bash ./gitpretty-apply.sh .
+# TypeScript 类型检查
+bun run typecheck
 
-# Optional: install hooks for future commits
-bash ./gitpretty-apply.sh . --hooks
+# Biome 检查
+bun run lint
 
-# Push as usual
-git push origin main
+# 自动修复 lint / format
+bun run lint:fix
+bun run format
+
+# lint + typecheck
+bun run check
 ```
 
-</details>
+## MCP Server
 
----
+MCP Server 位于 `mcp-server/`，用于通过 MCP 客户端探索源码。
 
-## Contributing
+```bash
+cd mcp-server
+npm install
+npm run build
+```
 
-Contributions to documentation, the MCP server, and exploration tooling are welcome. Changes to the archived snapshot under `src/` are not the default contribution path. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+STDIO 模式：
 
-> **Note:** The `src/` directory is the archived source snapshot and should generally remain unchanged.
+```bash
+npm start
+```
 
----
+HTTP 模式：
 
-## Disclaimer
+```bash
+npm run start:http
+```
 
-This repository archives a source snapshot reportedly exposed via Anthropic's npm distribution on **2026-03-31**. It is provided for research, documentation, and exploratory tooling around the snapshot. The original Claude Code source remains the property of [Anthropic](https://www.anthropic.com), this is not an official release, and no rights to Anthropic's original code are granted by this repository. If you choose to use or redistribute any of the archived material, you are responsible for assessing the legal implications yourself. Contact [nichxbt](https://www.x.com/nichxbt) for any comments.
+可用环境变量：
+
+```bash
+CLAUDE_CODE_SRC_ROOT=/absolute/path/to/src
+PORT=3000
+MCP_API_KEY=your-secret-token
+```
+
+## VS Code 插件配置
+
+插件会自动检测以下 CLI 路径：
+
+- `../dist/helion-coder`
+- `../dist/cli.mjs`
+- `PATH` 中的 `helion-coder`
+
+也可以在 VS Code 设置中手动指定：
+
+```json
+{
+  "helionCoder.executablePath": "/absolute/path/to/dist/helion-coder",
+  "helionCoder.model": "gpt-5.4",
+  "helionCoder.effort": "medium",
+  "helionCoder.models": ["gpt-5.4", "gpt-5.4-mini", "your-custom-model"]
+}
+```
+
+常用命令：
+
+- `HelionCoder: 打开助手面板`
+- `HelionCoder: 询问 HelionCoder`
+- `HelionCoder: 解释选区`
+- `HelionCoder: 选择模型`
+- `HelionCoder: 配置 CLI 可执行文件`
+
+## 常用命令速查
+
+```bash
+bun install              # 安装依赖
+bun run build            # 构建 CLI
+bun run build:prod       # 生产构建 CLI
+bun run build:watch      # 监听构建 CLI
+bun run start            # 运行 dist/cli.mjs
+bun run build:web        # 构建 Web 资源
+bun run build:vscode     # 编译 VS Code 插件
+bun run package:vscode   # 打包 VS Code 插件
+bun run build:npm        # 生成 npm 包
+bun run check            # lint + typecheck
+```
+
+## 贡献说明
+
+仓库中的 `src/` 主要是源码快照，通常不建议直接修改。更适合贡献的内容包括：
+
+- 文档与架构说明
+- MCP Server
+- VS Code 插件
+- 构建、打包和探索辅助脚本
+- 代码分析和使用说明
+
+详情见 `CONTRIBUTING.md`。
