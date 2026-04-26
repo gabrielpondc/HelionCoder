@@ -3,7 +3,7 @@
  *
  * Registers the `claude-cli://` custom URI scheme with the OS,
  * so that clicking a `claude-cli://` link in a browser (or any app) will
- * invoke `ktcoder --handle-uri <url>`.
+ * invoke `Helioncoder --handle-uri <url>`.
  *
  * Platform details:
  *   macOS  — Creates a minimal .app trampoline in ~/Applications with
@@ -31,9 +31,9 @@ import { getUserBinDir, getXDGDataHome } from '../xdg.js'
 import { DEEP_LINK_PROTOCOL } from './parseDeepLink.js'
 
 export const MACOS_BUNDLE_ID = 'com.anthropic.claude-code-url-handler'
-const APP_NAME = 'ktcoder URL Handler'
+const APP_NAME = 'Helioncoder URL Handler'
 const DESKTOP_FILE_NAME = 'claude-code-url-handler.desktop'
-const MACOS_APP_NAME = 'ktcoder URL Handler.app'
+const MACOS_APP_NAME = 'Helioncoder URL Handler.app'
 
 // Shared between register* (writes these paths/values) and
 // isProtocolHandlerCurrent (reads them back). Keep the writer and reader
@@ -87,7 +87,7 @@ async function registerMacos(claudePath: string): Promise<void> {
 
   await fs.mkdir(path.dirname(MACOS_SYMLINK_PATH), { recursive: true })
 
-  // Info.plist — registers the URL scheme with ktcoder as the executable
+  // Info.plist — registers the URL scheme with Helioncoder as the executable
   const infoPlist = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -108,7 +108,7 @@ async function registerMacos(claudePath: string): Promise<void> {
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>ktcoder Deep Link</string>
+      <string>Helioncoder Deep Link</string>
       <key>CFBundleURLSchemes</key>
       <array>
         <string>${DEEP_LINK_PROTOCOL}</string>
@@ -120,7 +120,7 @@ async function registerMacos(claudePath: string): Promise<void> {
 
   await fs.writeFile(path.join(contentsDir, 'Info.plist'), infoPlist)
 
-  // Symlink to the already-signed ktcoder binary — avoids a new executable
+  // Symlink to the already-signed Helioncoder binary — avoids a new executable
   // that would need signing and endpoint-security allowlisting.
   // Written LAST among the throwing fs calls: isProtocolHandlerCurrent reads
   // this symlink, so it acts as the commit marker. If Info.plist write
@@ -146,7 +146,7 @@ async function registerLinux(claudePath: string): Promise<void> {
 
   const desktopEntry = `[Desktop Entry]
 Name=${APP_NAME}
-Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for ktcoder
+Comment=Handle ${DEEP_LINK_PROTOCOL}:// deep links for Helioncoder
 ${linuxExecLine(claudePath)}
 Type=Application
 NoDisplay=true
@@ -233,7 +233,7 @@ export async function registerProtocolHandler(
 }
 
 /**
- * Resolve the ktcoder binary path for protocol registration. Prefers the
+ * Resolve the Helioncoder binary path for protocol registration. Prefers the
  * native installer's stable symlink (~/.local/bin/claude) which survives
  * auto-updates; falls back to process.execPath when the symlink is absent
  * (dev builds, non-native installs).

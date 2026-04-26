@@ -74,7 +74,7 @@ export type LoadedFrom =
   | 'mcp'
 
 /**
- * Returns a ktcoder config directory path for a given source.
+ * Returns a Helioncoder config directory path for a given source.
  */
 export function getSkillsPath(
   source: SettingSource | 'plugin',

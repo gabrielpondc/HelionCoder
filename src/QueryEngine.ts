@@ -1178,7 +1178,7 @@ export class QueryEngine {
 
 /**
  * Sends a single prompt to the Claude API and returns the response.
- * Assumes that ktcoder is being used non-interactively -- will not
+ * Assumes that Helioncoder is being used non-interactively -- will not
  * ask the user for permissions or further input.
  *
  * Convenience wrapper around QueryEngine for one-shot usage.

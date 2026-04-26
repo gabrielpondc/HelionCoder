@@ -143,7 +143,7 @@ export const CronCreateTool = buildTool({
   mapToolResultToToolResultBlockParam(output, toolUseID) {
     const where = output.durable
       ? 'Persisted to .helioncoder/scheduled_tasks.json'
-      : 'Session-only (not written to disk, dies when ktcoder exits)'
+      : 'Session-only (not written to disk, dies when Helioncoder exits)'
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',

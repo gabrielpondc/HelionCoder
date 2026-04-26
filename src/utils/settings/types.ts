@@ -63,7 +63,7 @@ export const PermissionsSchema = lazySchema(() =>
             : EXTERNAL_PERMISSION_MODES,
         )
         .optional()
-        .describe('Default permission mode when ktcoder needs access'),
+        .describe('Default permission mode when Helioncoder needs access'),
       disableBypassPermissionsMode: z
         .enum(['disable'])
         .optional()
@@ -258,7 +258,7 @@ export const SettingsSchema = lazySchema(() =>
       $schema: z
         .literal(CLAUDE_CODE_SETTINGS_SCHEMA_URL)
         .optional()
-        .describe('JSON Schema reference for ktcoder settings'),
+        .describe('JSON Schema reference for Helioncoder settings'),
       apiKeyHelper: z
         .string()
         .optional()
@@ -291,7 +291,7 @@ export const SettingsSchema = lazySchema(() =>
                   .describe('IdP issuer URL for OIDC discovery'),
                 clientId: z
                   .string()
-                  .describe("ktcoder's client_id registered at the IdP"),
+                  .describe("Helioncoder's client_id registered at the IdP"),
                 callbackPort: z
                   .number()
                   .int()
@@ -332,7 +332,7 @@ export const SettingsSchema = lazySchema(() =>
         ),
       env: EnvironmentVariablesSchema()
         .optional()
-        .describe('Environment variables to set for ktcoder sessions'),
+        .describe('Environment variables to set for Helioncoder sessions'),
       // Attribution for commits and PRs
       attribution: z
         .object({
@@ -354,7 +354,7 @@ export const SettingsSchema = lazySchema(() =>
         .optional()
         .describe(
           'Customize attribution text for commits and PRs. ' +
-            'Each field defaults to the standard ktcoder attribution if not set.',
+            'Each field defaults to the standard Helioncoder attribution if not set.',
         ),
       includeCoAuthoredBy: z
         .boolean()
@@ -375,7 +375,7 @@ export const SettingsSchema = lazySchema(() =>
       model: z
         .string()
         .optional()
-        .describe('Override the default model used by ktcoder'),
+        .describe('Override the default model used by Helioncoder'),
       // Enterprise allowlist of models
       availableModels: z
         .array(z.string())
@@ -1040,7 +1040,7 @@ export const SettingsSchema = lazySchema(() =>
                 'Default working directory on the remote host. ' +
                   'Supports tilde expansion (e.g. ~/projects). ' +
                   'If not specified, defaults to the remote user home directory. ' +
-                  'Can be overridden by the [dir] positional argument in `ktcoder ssh <config> [dir]`.',
+                  'Can be overridden by the [dir] positional argument in `Helioncoder ssh <config> [dir]`.',
               ),
           }),
         )

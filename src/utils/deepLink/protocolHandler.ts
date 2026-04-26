@@ -1,11 +1,11 @@
 /**
  * Protocol Handler
  *
- * Entry point for `ktcoder --handle-uri <url>`. When the OS invokes claude
+ * Entry point for `Helioncoder --handle-uri <url>`. When the OS invokes claude
  * with a `claude-cli://` URL, this module:
  *   1. Parses the URI into a structured action
  *   2. Detects the user's terminal emulator
- *   3. Opens a new terminal window running ktcoder with the appropriate args
+ *   3. Opens a new terminal window running Helioncoder with the appropriate args
  *
  * This runs in a headless context (no TTY) because the OS launches the binary
  * directly — there is no terminal attached.
@@ -27,7 +27,7 @@ import { launchInTerminal } from './terminalLauncher.js'
  * Handle an incoming deep link URI.
  *
  * Called from the CLI entry point when `--handle-uri` is passed.
- * This function parses the URI, resolves the ktcoder binary, and
+ * This function parses the URI, resolves the Helioncoder binary, and
  * launches it in the user's terminal.
  *
  * @param uri - The raw URI string (e.g., "claude-cli://prompt?q=hello+world")
@@ -75,7 +75,7 @@ export async function handleDeepLinkUri(uri: string): Promise<number> {
 }
 
 /**
- * Handle the case where ktcoder was launched as the app bundle's executable
+ * Handle the case where Helioncoder was launched as the app bundle's executable
  * by macOS (via URL scheme). Uses the NAPI module to receive the URL from
  * the Apple Event, then handles it normally.
  *

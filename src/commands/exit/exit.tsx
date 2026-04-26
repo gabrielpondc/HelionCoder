@@ -12,8 +12,8 @@ function getRandomGoodbyeMessage(): string {
   return sample(GOODBYE_MESSAGES) ?? 'Goodbye!';
 }
 export async function call(onDone: LocalJSXCommandOnDone): Promise<React.ReactNode> {
-  // Inside a `ktcoder --bg` tmux session: detach instead of kill. The REPL
-  // keeps running; `ktcoder attach` can reconnect. Covers /exit, /quit,
+  // Inside a `Helioncoder --bg` tmux session: detach instead of kill. The REPL
+  // keeps running; `Helioncoder attach` can reconnect. Covers /exit, /quit,
   // ctrl+c, ctrl+d — all funnel through here via REPL's handleExit.
   if (feature('BG_SESSIONS') && isBgSession()) {
     onDone();

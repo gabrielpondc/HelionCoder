@@ -1,6 +1,6 @@
 /**
  * Shared utilities for displaying agent information.
- * Used by both the CLI `ktcoder agents` handler and the interactive `/agents` command.
+ * Used by both the CLI `Helioncoder agents` handler and the interactive `/agents` command.
  */
 
 import { getDefaultSubagentModel } from '../../utils/model/agent.js'

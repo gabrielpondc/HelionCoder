@@ -155,7 +155,7 @@ function printResumeHint(): void {
   ) {
     try {
       const sessionId = getSessionId()
-      // Don't show resume hint if no session file exists (e.g., subcommands like `ktcoder update`)
+      // Don't show resume hint if no session file exists (e.g., subcommands like `Helioncoder update`)
       if (!sessionIdExists(sessionId)) {
         return
       }

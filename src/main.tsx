@@ -540,7 +540,7 @@ function initializeEntrypoint(isNonInteractive: boolean): void {
   process.env.CLAUDE_CODE_ENTRYPOINT = isNonInteractive ? 'sdk-cli' : 'cli';
 }
 
-// Set by early argv processing when `ktcoder open <url>` is detected (interactive mode only)
+// Set by early argv processing when `Helioncoder open <url>` is detected (interactive mode only)
 type PendingConnect = {
   url: string | undefined;
   authToken: string | undefined;
@@ -552,7 +552,7 @@ const _pendingConnect: PendingConnect | undefined = feature('DIRECT_CONNECT') ? 
   dangerouslySkipPermissions: false
 } : undefined;
 
-// Set by early argv processing when `ktcoder assistant [sessionId]` is detected
+// Set by early argv processing when `Helioncoder assistant [sessionId]` is detected
 type PendingAssistantChat = {
   sessionId?: string;
   discover: boolean;
@@ -562,7 +562,7 @@ const _pendingAssistantChat: PendingAssistantChat | undefined = feature('KAIROS'
   discover: false
 } : undefined;
 
-// `ktcoder ssh <host> [dir]` — parsed from argv early (same pattern as
+// `Helioncoder ssh <host> [dir]` — parsed from argv early (same pattern as
 // DIRECT_CONNECT above) so the main command path can pick it up and hand
 // the REPL an SSH-backed session instead of a local one.
 type PendingSSH = {
@@ -677,10 +677,10 @@ export async function main() {
     }
   }
 
-  // `ktcoder assistant [sessionId]` — stash and strip so the main
+  // `Helioncoder assistant [sessionId]` — stash and strip so the main
   // command handles it, giving the full interactive TUI. Position-0 only
   // (matching the ssh pattern below) — indexOf would false-positive on
-  // `ktcoder -p "explain assistant"`. Root-flag-before-subcommand
+  // `Helioncoder -p "explain assistant"`. Root-flag-before-subcommand
   // (e.g. `--debug assistant`) falls through to the stub, which
   // prints usage.
   if (feature('KAIROS') && _pendingAssistantChat) {
@@ -696,11 +696,11 @@ export async function main() {
         rawArgs.splice(0, 1); // drop 'assistant'
         process.argv = [process.argv[0]!, process.argv[1]!, ...rawArgs];
       }
-      // else: `ktcoder assistant --help` → fall through to stub
+      // else: `Helioncoder assistant --help` → fall through to stub
     }
   }
 
-  // `ktcoder ssh <host> [dir]` — strip from argv so the main command handler
+  // `Helioncoder ssh <host> [dir]` — strip from argv so the main command handler
   // runs (full interactive TUI), stash the host/dir for the REPL branch at
   // ~line 3720 to pick up. Headless (-p) mode not supported in v1: SSH
   // sessions need the local REPL to drive them (interrupt, permissions).
@@ -709,7 +709,7 @@ export async function main() {
     // SSH-specific flags can appear before the host positional (e.g.
     // `ssh --permission-mode auto host /tmp` — standard POSIX flags-before-
     // positionals). Pull them all out BEFORE checking whether a host was
-    // given, so `ktcoder ssh --permission-mode auto host` and `ktcoder ssh host
+    // given, so `Helioncoder ssh --permission-mode auto host` and `Helioncoder ssh host
     // --permission-mode auto` are equivalent. The host check below only needs
     // to guard against `-h`/`--help` (which commander should handle).
     if (rawCliArgs[0] === 'ssh') {
@@ -843,7 +843,7 @@ export async function main() {
     setQuestionPreviewFormat('markdown');
   }
 
-  // Tag sessions created via `ktcoder remote-control` so the backend can identify them
+  // Tag sessions created via `Helioncoder remote-control` so the backend can identify them
   if (process.env.CLAUDE_CODE_ENVIRONMENT_KIND === 'bridge') {
     setSessionSource('remote-control');
   }
@@ -1014,7 +1014,7 @@ async function run(): Promise<CommanderCommand> {
     return value;
   })).option('--agent <agent>', `本次会话使用的 Agent，会覆盖 'agent' 设置。`).option('--betas <betas...>', 'API 请求中包含的 Beta headers（仅 API Key 用户）').option('--fallback-model <model>', '默认模型过载时自动回退到指定模型（仅 --print 可用）').addOption(new Option('--workload <tag>', '用于 billing-header 归因的 workload 标签（cc_workload）。进程级设置；供 SDK daemon 调用方为 cron 子进程设置。（仅 --print 可用）').hideHelp()).option('--settings <file-or-json>', '要额外加载的 settings JSON 文件路径或 JSON 字符串').option('--add-dir <directories...>', '允许工具访问的额外目录').option('--ide', '启动时如果恰好有一个有效 IDE，则自动连接', () => true).option('--strict-mcp-config', '只使用 --mcp-config 中的 MCP 服务器，忽略其他 MCP 配置', () => true).option('--session-id <uuid>', '为对话使用指定会话 ID（必须是合法 UUID）').option('-n, --name <name>', '设置本次会话显示名（显示在 /resume 和终端标题中）').option('--agents <json>', '定义自定义 agents 的 JSON 对象（例如 \'{"reviewer": {"description": "Reviews code", "prompt": "You are a code reviewer"}}\'）').option('--setting-sources <sources>', '要加载的设置来源，逗号分隔（user、project、local）。')
   // gh-33508: <paths...> (variadic) consumed everything until the next
-  // --flag. `ktcoder --plugin-dir /path mcp add --transport http` swallowed
+  // --flag. `Helioncoder --plugin-dir /path mcp add --transport http` swallowed
   // `mcp` and `add` as paths, then choked on --transport as an unknown
   // top-level option. Single-value + collect accumulator means each
   // --plugin-dir takes exactly one arg; repeat the flag for multiple dirs.
@@ -2540,7 +2540,7 @@ async function run(): Promise<CommanderCommand> {
 
     // Register PID file for concurrent-session detection (~/.helioncoder/sessions/)
     // and fire multi-clauding telemetry. Lives here (not init.ts) so only the
-    // REPL path registers — not subcommands like `ktcoder doctor`. Chained:
+    // REPL path registers — not subcommands like `Helioncoder doctor`. Chained:
     // count must run after register's write completes or it misses our own file.
     void registerSession().then(registered => {
       if (!registered) return;
@@ -3169,7 +3169,7 @@ async function run(): Promise<CommanderCommand> {
         process.exit(1);
       }
     } else if (feature('DIRECT_CONNECT') && _pendingConnect?.url) {
-      // `ktcoder connect <url>` — full interactive TUI connected to a remote server
+      // `Helioncoder connect <url>` — full interactive TUI connected to a remote server
       let directConnectConfig;
       try {
         const session = await createDirectConnectSession({
@@ -3206,7 +3206,7 @@ async function run(): Promise<CommanderCommand> {
       }, renderAndRun);
       return;
     } else if (feature('SSH_REMOTE') && _pendingSSH?.host) {
-      // `ktcoder ssh <host> [dir]` — probe remote, deploy binary if needed,
+      // `Helioncoder ssh <host> [dir]` — probe remote, deploy binary if needed,
       // spawn ssh with unix-socket -R forward to a local auth proxy, hand
       // the REPL an SSHSession. Tools run remotely, UI renders locally.
       // `--local` skips probe/deploy/ssh and spawns the current binary
@@ -3272,7 +3272,7 @@ async function run(): Promise<CommanderCommand> {
       }, renderAndRun);
       return;
     } else if (feature('KAIROS') && _pendingAssistantChat && (_pendingAssistantChat.sessionId || _pendingAssistantChat.discover)) {
-      // `ktcoder assistant [sessionId]` — REPL as a pure viewer client
+      // `Helioncoder assistant [sessionId]` — REPL as a pure viewer client
       // of a remote assistant session. The agentic loop runs remotely; this
       // process streams live events and POSTs messages. History is lazy-
       // loaded by useAssistantHistory on scroll-up (no blocking fetch here).
@@ -3413,7 +3413,7 @@ async function run(): Promise<CommanderCommand> {
         }
       }
 
-      // --remote and --teleport both create/resume ktcoder Web (CCR) sessions.
+      // --remote and --teleport both create/resume Helioncoder Web (CCR) sessions.
       // Remote Control (--rc) is a separate feature gated in initReplBridge.ts.
       if (remote !== null || teleport) {
         await waitForPolicyLimitsToLoad();
@@ -3904,7 +3904,7 @@ async function run(): Promise<CommanderCommand> {
     return program;
   }
 
-  // ktcoder mcp
+  // Helioncoder mcp
 
   const mcp = program.command('mcp').description('配置和管理 MCP 服务器').configureHelp(createSortedHelpConfig()).enablePositionalOptions();
   mcp.command('serve').description(`启动 ${PRODUCT_NAME} MCP 服务器`).option('-d, --debug', '启用调试模式', () => true).option('--verbose', '覆盖配置中的详细输出设置', () => true).action(async ({
@@ -3957,7 +3957,7 @@ async function run(): Promise<CommanderCommand> {
     } = await import('./cli/handlers/mcp.js');
     await mcpAddJsonHandler(name, json, options);
   });
-  mcp.command('add-from-ktcoder-desktop').alias('add-from-claude-desktop').description('从桌面应用导入 MCP 服务器（仅 Mac 和 WSL）').option('-s, --scope <scope>', '配置范围（local、user 或 project）', 'local').action(async (options: {
+  mcp.command('add-from-Helioncoder-desktop').alias('add-from-claude-desktop').description('从桌面应用导入 MCP 服务器（仅 Mac 和 WSL）').option('-s, --scope <scope>', '配置范围（local、user 或 project）', 'local').action(async (options: {
     scope?: string;
   }) => {
     const {
@@ -3972,7 +3972,7 @@ async function run(): Promise<CommanderCommand> {
     await mcpResetChoicesHandler();
   });
 
-  // ktcoder server
+  // Helioncoder server
   if (feature('DIRECT_CONNECT')) {
     program.command('server').description(`启动 ${PRODUCT_NAME} 会话服务器`).option('--port <number>', 'HTTP 端口', '0').option('--host <string>', '绑定地址', '0.0.0.0').option('--auth-token <token>', '用于认证的 Bearer token').option('--unix <path>', '监听 Unix domain socket').option('--workspace <dir>', '未指定 cwd 的会话默认工作目录').option('--idle-timeout <ms>', '离线会话空闲超时毫秒数（0 表示永不过期）', '600000').option('--max-sessions <n>', '最大并发会话数（0 表示无限制）', '32').action(async (opts: {
       port: string;
@@ -4052,11 +4052,11 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
-  // `ktcoder ssh <host> [dir]` — registered here only so --help shows it.
+  // `Helioncoder ssh <host> [dir]` — registered here only so --help shows it.
   // The actual interactive flow is handled by early argv rewriting in main()
   // (parallels the DIRECT_CONNECT/cc:// pattern above). If commander reaches
   // this action it means the argv rewrite didn't fire (e.g. user ran
-  // `ktcoder ssh` with no host) — just print usage.
+  // `Helioncoder ssh` with no host) — just print usage.
   if (feature('SSH_REMOTE')) {
     program.command('ssh <host> [dir]').description(`通过 SSH 在远程主机运行 ${PRODUCT_NAME}。会部署二进制并把 API 认证隧道回本机，无需远程单独配置。`).option('--permission-mode <mode>', '远程会话权限模式').option('--dangerously-skip-permissions', '跳过远程所有权限提示（危险）').option('--local', 'e2e 测试模式：在本地启动子 CLI（跳过 ssh/deploy）。' + '无需远程主机即可测试认证代理和 unix-socket 管道。').action(async () => {
       // Argv rewriting in main() should have consumed `ssh <host>` before
@@ -4067,7 +4067,7 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
-  // ktcoder connect — subcommand only handles -p (headless) mode.
+  // Helioncoder connect — subcommand only handles -p (headless) mode.
   // Interactive mode (without -p) is handled by early argv rewriting in main()
   // which redirects to the main command with full TUI support.
   if (feature('DIRECT_CONNECT')) {
@@ -4110,7 +4110,7 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
-  // ktcoder auth
+  // Helioncoder auth
 
   const auth = program.command('auth').description('管理认证').configureHelp(createSortedHelpConfig());
   auth.command('login').description('打开交互式 API 配置流程').action(async () => {
@@ -4405,7 +4405,7 @@ async function run(): Promise<CommanderCommand> {
     });
   }
 
-  // ktcoder install
+  // Helioncoder install
   program.command('install [target]').description(`安装 ${PRODUCT_NAME} 原生构建。可用 [target] 指定版本（stable、latest 或具体版本）`).option('--force', '即使已安装也强制安装').action(async (target: string | undefined, options: {
     force?: boolean;
   }) => {
@@ -4422,7 +4422,7 @@ async function run(): Promise<CommanderCommand> {
       if (maybeSessionId) return maybeSessionId;
       return Number(value);
     };
-    // ktcoder log
+    // Helioncoder log
     program.command('log').description('[ANT-ONLY] Manage conversation logs.').argument('[number|sessionId]', 'A number (0, 1, 2, etc.) to display a specific log, or the sesssion ID (uuid) of a log', validateLogId).action(async (logId: string | number | undefined) => {
       const {
         logHandler
@@ -4430,7 +4430,7 @@ async function run(): Promise<CommanderCommand> {
       await logHandler(logId);
     });
 
-    // ktcoder error
+    // Helioncoder error
     program.command('error').description('[ANT-ONLY] View error logs. Optionally provide a number (0, -1, -2, etc.) to display a specific log.').argument('[number]', 'A number (0, 1, 2, etc.) to display a specific log', parseInt).action(async (number: number | undefined) => {
       const {
         errorHandler
@@ -4438,7 +4438,7 @@ async function run(): Promise<CommanderCommand> {
       await errorHandler(number);
     });
 
-    // ktcoder export
+    // Helioncoder export
     program.command('export').description('[ANT-ONLY] Export a conversation to a text file.').usage('<source> <outputFile>').argument('<source>', 'Session ID, log index (0, 1, 2...), or path to a .json/.jsonl log file').argument('<outputFile>', 'Output file path for the exported text').addHelpText('after', `
 Examples:
   $ ${CLI_NAME} export 0 conversation.txt                Export conversation at log index 0
@@ -4502,7 +4502,7 @@ Examples:
       });
     }
 
-    // ktcoder completion <shell>
+    // Helioncoder completion <shell>
     program.command('completion <shell>', {
       hidden: true
     }).description('Generate shell completion script (bash, zsh, or fish)').option('--output <file>', 'Write completion script directly to a file instead of stdout').action(async (shell: string, opts: {

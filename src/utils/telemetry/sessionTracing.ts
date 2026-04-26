@@ -1,8 +1,8 @@
 /**
- * Session Tracing for ktcoder using OpenTelemetry (BETA)
+ * Session Tracing for Helioncoder using OpenTelemetry (BETA)
  *
  * This module provides a high-level API for creating and managing spans
- * to trace ktcoder workflows. Each user interaction creates a root
+ * to trace Helioncoder workflows. Each user interaction creates a root
  * interaction span, which contains operation spans (LLM requests, tool calls, etc.).
  *
  * Requirements:

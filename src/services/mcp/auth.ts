@@ -365,7 +365,7 @@ export function hasMcpDiscoveryButNoToken(
 /**
  * Revokes a single token on the OAuth server.
  *
- * Per RFC 7009, public clients (like ktcoder) should authenticate by including
+ * Per RFC 7009, public clients (like Helioncoder) should authenticate by including
  * client_id in the request body, NOT via an Authorization header. The Bearer token
  * in an Authorization header is meant for resource owner authentication, not client
  * authentication.
@@ -655,7 +655,7 @@ type XaaFailureStage =
  * 3. Save tokens to the same keychain slot as normal OAuth
  *
  * IdP connection details come from settings.xaaIdp (configured once via
- * `ktcoder mcp xaa setup`). Per-server config is just `oauth.xaa: true`
+ * `Helioncoder mcp xaa setup`). Per-server config is just `oauth.xaa: true`
  * plus the AS clientId/clientSecret.
  *
  * No silent fallback: if `oauth.xaa` is set, XAA is the only path.
@@ -676,7 +676,7 @@ async function performMCPXaaAuth(
   const idp = getXaaIdpSettings()
   if (!idp) {
     throw new Error(
-      "XAA: no IdP connection configured. Run 'ktcoder mcp xaa setup --issuer <url> --client-id <id> --client-secret' to configure.",
+      "XAA: no IdP connection configured. Run 'Helioncoder mcp xaa setup --issuer <url> --client-id <id> --client-secret' to configure.",
     )
   }
 

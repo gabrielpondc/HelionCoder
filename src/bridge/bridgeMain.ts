@@ -110,7 +110,7 @@ function pollSleepDetectionThresholdMs(backoff: BackoffConfig): number {
 
 /**
  * Returns the args that must precede CLI flags when spawning a child claude
- * process. In compiled binaries, process.execPath is the ktcoder binary itself
+ * process. In compiled binaries, process.execPath is the Helioncoder binary itself
  * and args go directly to it. In npm installs (node running cli.js),
  * process.execPath is the node runtime — the child spawn must pass the script
  * path as the first arg, otherwise node interprets --sdk-url as a node option
@@ -1513,7 +1513,7 @@ export async function runBridgeLoop(
   }
 
   // In single-session mode with a known session, leave the session and
-  // environment alive so `ktcoder remote-control --session-id=<id>` can resume.
+  // environment alive so `Helioncoder remote-control --session-id=<id>` can resume.
   // The backend GCs stale environments via a 4h TTL (BRIDGE_LAST_POLL_TTL).
   // Archiving the session or deregistering the environment would make the
   // printed resume command a lie — deregister deletes Firestore + Redis stream.
@@ -1529,7 +1529,7 @@ export async function runBridgeLoop(
     !fatalExit
   ) {
     logger.logStatus(
-      `Resume this session by running \`ktcoder remote-control --continue\``,
+      `Resume this session by running \`Helioncoder remote-control --continue\``,
     )
     logForDebugging(
       `[bridge:shutdown] Skipping archive+deregister to allow resume of session ${initialSessionId}`,
@@ -1820,7 +1820,7 @@ export function parseArgs(args: string[]): ParsedArgs {
       createSessionInDir = false
     } else {
       return makeError(
-        `Unknown argument: ${arg}\nRun 'ktcoder remote-control --help' for usage.`,
+        `Unknown argument: ${arg}\nRun 'Helioncoder remote-control --help' for usage.`,
       )
     }
   }
@@ -1921,7 +1921,7 @@ async function printHelp(): Promise<void> {
 Remote Control - Connect your local environment to claude.ai/code
 
 USAGE
-  ktcoder remote-control [options]
+  Helioncoder remote-control [options]
 OPTIONS
   --name <name>                    Name for the session (shown in claude.ai/code)
 ${
@@ -2154,7 +2154,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     if (!found) {
       // biome-ignore lint/suspicious/noConsole: intentional error output
       console.error(
-        `Error: No recent session found in this directory or its worktrees. Run \`ktcoder remote-control\` to start a new one.`,
+        `Error: No recent session found in this directory or its worktrees. Run \`Helioncoder remote-control\` to start a new one.`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)
@@ -2252,7 +2252,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
     })
     // biome-ignore lint/suspicious/noConsole: intentional dialog output
     console.log(
-      `\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from ktcoder on Web or your Mobile app. Learn more here: https://code.claude.com/docs/en/remote-control\n\n` +
+      `\nClaude Remote Control is launching in spawn mode which lets you create new sessions in this project from Helioncoder on Web or your Mobile app. Learn more here: https://code.claude.com/docs/en/remote-control\n\n` +
         `Spawn mode for this project:\n` +
         `  [1] same-dir \u2014 sessions share the current directory (default)\n` +
         `  [2] worktree \u2014 each session gets an isolated git worktree\n\n` +
@@ -2392,7 +2392,7 @@ export async function bridgeMain(args: string[]): Promise<void> {
       }
       // biome-ignore lint/suspicious/noConsole: intentional error output
       console.error(
-        `Error: Session ${resumeSessionId} not found. It may have been archived or expired, or your login may have lapsed (run \`ktcoder /login\`).`,
+        `Error: Session ${resumeSessionId} not found. It may have been archived or expired, or your login may have lapsed (run \`Helioncoder /login\`).`,
       )
       // eslint-disable-next-line custom-rules/no-process-exit
       process.exit(1)

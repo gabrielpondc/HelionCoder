@@ -2,7 +2,7 @@
  * SDK MCP Transport Bridge
  *
  * This file implements a transport bridge that allows MCP servers running in the SDK process
- * to communicate with the ktcoder CLI process through control messages.
+ * to communicate with the Helioncoder CLI process through control messages.
  *
  * ## Architecture Overview
  *

@@ -58,6 +58,20 @@ type ResponsesImagePart = {
 
 type ResponsesContentPart = ResponsesTextPart | ResponsesImagePart
 
+type ToolChoice = {
+  type?: string
+  name?: string
+  disable_parallel_tool_use?: boolean
+}
+
+type OutputFormat = {
+  type?: string
+  name?: string
+  description?: string
+  schema?: unknown
+  strict?: boolean
+}
+
 function isMessagesRequest(input: RequestInfo | URL): boolean {
   const url = input instanceof Request ? input.url : String(input)
   try {
@@ -76,6 +90,23 @@ async function readJsonBody(input: RequestInfo | URL, init?: RequestInit) {
         ? await input.clone().text()
         : ''
   return raw ? JSON.parse(raw) : {}
+}
+
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const raw = await response.text()
+  if (!raw) {
+    return {}
+  }
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return {
+      error: {
+        message: raw,
+        type: 'api_error',
+      },
+    }
+  }
 }
 
 function imageUrlFromBlock(block: AnthropicBlock): string | undefined {
@@ -153,6 +184,119 @@ function textFromContent(content: unknown): string {
     )
     .filter(Boolean)
     .join('\n')
+}
+
+function textFromSystem(system: unknown): string | undefined {
+  const text = textFromContent(system)
+  if (text) {
+    return text
+  }
+  return typeof system === 'string' && system.trim() ? system : undefined
+}
+
+function toOpenAIChatToolChoice(toolChoice: unknown): unknown | undefined {
+  if (!toolChoice || typeof toolChoice !== 'object') {
+    return undefined
+  }
+
+  const choice = toolChoice as ToolChoice
+  if (choice.type === 'auto') {
+    return 'auto'
+  }
+  if (choice.type === 'none') {
+    return 'none'
+  }
+  if (choice.type === 'any') {
+    return 'required'
+  }
+  if (choice.type === 'tool' && choice.name) {
+    return {
+      type: 'function',
+      function: { name: choice.name },
+    }
+  }
+  return undefined
+}
+
+function toOpenAIResponsesToolChoice(toolChoice: unknown): unknown | undefined {
+  const chatToolChoice = toOpenAIChatToolChoice(toolChoice)
+  if (
+    chatToolChoice &&
+    typeof chatToolChoice === 'object' &&
+    'function' in chatToolChoice
+  ) {
+    const name = (chatToolChoice as { function?: { name?: string } }).function
+      ?.name
+    return name ? { type: 'function', name } : undefined
+  }
+  return chatToolChoice
+}
+
+function parallelToolCallsFromToolChoice(toolChoice: unknown): boolean | undefined {
+  if (!toolChoice || typeof toolChoice !== 'object') {
+    return undefined
+  }
+
+  return (toolChoice as ToolChoice).disable_parallel_tool_use === true
+    ? false
+    : undefined
+}
+
+function jsonSchemaFormatFromOutputConfig(outputConfig: unknown) {
+  if (!outputConfig || typeof outputConfig !== 'object') {
+    return undefined
+  }
+  const format = (outputConfig as { format?: unknown }).format
+  if (!format || typeof format !== 'object') {
+    return undefined
+  }
+
+  const outputFormat = format as OutputFormat
+  if (outputFormat.type !== 'json_schema' || !outputFormat.schema) {
+    return undefined
+  }
+
+  return {
+    type: 'json_schema',
+    name: outputFormat.name ?? 'response_schema',
+    ...(outputFormat.description && { description: outputFormat.description }),
+    schema: outputFormat.schema,
+    ...(typeof outputFormat.strict === 'boolean' && {
+      strict: outputFormat.strict,
+    }),
+  }
+}
+
+function chatResponseFormatFromOutputConfig(outputConfig: unknown) {
+  const jsonSchema = jsonSchemaFormatFromOutputConfig(outputConfig)
+  if (!jsonSchema) {
+    return undefined
+  }
+  const { type: _type, ...chatJsonSchema } = jsonSchema
+  return {
+    type: 'json_schema',
+    json_schema: chatJsonSchema,
+  }
+}
+
+function reasoningFromOutputConfig(outputConfig: unknown) {
+  if (!outputConfig || typeof outputConfig !== 'object') {
+    return undefined
+  }
+  const effort = (outputConfig as { effort?: unknown }).effort
+  if (typeof effort !== 'string') {
+    return undefined
+  }
+
+  const openAIEffort = effort === 'max' ? 'xhigh' : effort
+  if (
+    !['none', 'minimal', 'low', 'medium', 'high', 'xhigh'].includes(
+      openAIEffort,
+    )
+  ) {
+    return undefined
+  }
+  return { effort: openAIEffort }
 }
 
 function toChatMessages(
@@ -408,24 +552,62 @@ function toOpenAIRequest(body: Record<string, unknown>, mode: OpenAIEndpointMode
   const messages = Array.isArray(body.messages)
     ? (body.messages as Array<{ role: string; content: unknown }>)
     : []
+  const system = textFromSystem(body.system)
   const maxTokens = body.max_tokens
+  const parallelToolCalls = parallelToolCallsFromToolChoice(body.tool_choice)
+  const stop =
+    Array.isArray(body.stop_sequences) && body.stop_sequences.length > 0
+      ? body.stop_sequences
+      : undefined
+  const temperature =
+    typeof body.temperature === 'number' && body.temperature !== 1
+      ? body.temperature
+      : undefined
+  const topP = typeof body.top_p === 'number' ? body.top_p : undefined
+
   if (mode === 'chat-completions') {
+    const toolChoice = toOpenAIChatToolChoice(body.tool_choice)
+    const responseFormat = chatResponseFormatFromOutputConfig(body.output_config)
     return {
       model: body.model,
-      messages: toChatMessages(messages),
+      messages: [
+        ...(system ? [{ role: 'system', content: system }] : []),
+        ...toChatMessages(messages),
+      ],
       stream: body.stream === true,
       ...(typeof maxTokens === 'number' && { max_tokens: maxTokens }),
       ...(toChatTools(body.tools) && { tools: toChatTools(body.tools) }),
+      ...(toolChoice && { tool_choice: toolChoice }),
+      ...(parallelToolCalls !== undefined && {
+        parallel_tool_calls: parallelToolCalls,
+      }),
+      ...(stop && { stop }),
+      ...(temperature !== undefined && { temperature }),
+      ...(topP !== undefined && { top_p: topP }),
+      ...(responseFormat && { response_format: responseFormat }),
     }
   }
 
   const input = toResponsesInput(messages)
+  const toolChoice = toOpenAIResponsesToolChoice(body.tool_choice)
+  const textFormat = jsonSchemaFormatFromOutputConfig(body.output_config)
+  const reasoning = reasoningFromOutputConfig(body.output_config)
   return {
     model: body.model,
     input,
+    ...(system && { instructions: system }),
     stream: body.stream === true,
     ...(typeof maxTokens === 'number' && { max_output_tokens: maxTokens }),
     ...(toResponseTools(body.tools) && { tools: toResponseTools(body.tools) }),
+    ...(toolChoice && { tool_choice: toolChoice }),
+    ...(parallelToolCalls !== undefined && {
+      parallel_tool_calls: parallelToolCalls,
+    }),
+    ...(stop && { stop }),
+    ...(temperature !== undefined && { temperature }),
+    ...(topP !== undefined && { top_p: topP }),
+    ...(textFormat && { text: { format: textFormat } }),
+    ...(reasoning && { reasoning }),
   }
 }
 
@@ -466,6 +648,12 @@ function extractResponseContent(payload: any): AnthropicBlock[] {
   return blocks.length > 0 ? blocks : [{ type: 'text', text: payload?.output_text ?? '' }]
 }
 
+function hasResponseToolCall(payload: any): boolean {
+  return Array.isArray(payload?.output)
+    ? payload.output.some((item: any) => item?.type === 'function_call')
+    : false
+}
+
 function parseJsonObject(value: unknown): unknown {
   if (value && typeof value === 'object') {
     return value
@@ -490,6 +678,8 @@ function toAnthropicMessage(payload: any, model: string): Record<string, unknown
     content: extractResponseContent(payload),
     stop_reason:
       payload?.choices?.[0]?.finish_reason === 'tool_calls'
+        ? 'tool_use'
+        : hasResponseToolCall(payload)
         ? 'tool_use'
         : payload?.choices?.[0]?.finish_reason === 'length'
           ? 'max_tokens'
@@ -563,6 +753,14 @@ function buildOpenAIHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers)
   headers.delete('content-length')
   headers.delete('Content-Length')
+  headers.delete('x-api-key')
+  headers.delete('X-Api-Key')
+  headers.delete('anthropic-version')
+  headers.delete('Anthropic-Version')
+  headers.delete('anthropic-beta')
+  headers.delete('Anthropic-Beta')
+  headers.delete('anthropic-dangerous-direct-browser-access')
+  headers.delete('Anthropic-Dangerous-Direct-Browser-Access')
   headers.set('content-type', 'application/json')
   return headers
 }
@@ -808,6 +1006,16 @@ function createResponsesStreamAdapter(model: string) {
       })
     }
 
+    if (event === 'response.output_item.done' && data.item?.type === 'function_call') {
+      const index = Number(data.output_index ?? 0)
+      const current = toolCalls.get(index) ?? { arguments: '' }
+      current.id = data.item.id ?? current.id
+      current.callId = data.item.call_id ?? current.callId
+      current.name = data.item.name ?? current.name
+      current.arguments = data.item.arguments ?? current.arguments
+      toolCalls.set(index, current)
+    }
+
     if (
       event === 'response.function_call_arguments.delta' &&
       typeof data.delta === 'string'
@@ -916,7 +1124,7 @@ export function maybeWrapOpenAIEndpointFetch(
       })
     }
 
-    const payload = await response.json()
+    const payload = await readResponsePayload(response)
     if (!response.ok) {
       return new Response(JSON.stringify(payload), {
         status: response.status,

@@ -429,7 +429,7 @@ export const getWorktreeCount = async (): Promise<number> => {
 export const stashToCleanState = async (message?: string): Promise<boolean> => {
   try {
     const stashMessage =
-      message || `ktcoder auto-stash - ${new Date().toISOString()}`
+      message || `Helioncoder auto-stash - ${new Date().toISOString()}`
 
     // First, check if we have untracked files
     const { untracked } = await getFileStatus()

@@ -185,7 +185,7 @@ export async function prepareApiRequest(): Promise<{
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (accessToken === undefined) {
     throw new Error(
-      'ktcoder web sessions are unavailable in API-key mode because remote account authentication has been removed.',
+      'Helioncoder web sessions are unavailable in API-key mode because remote account authentication has been removed.',
     )
   }
 

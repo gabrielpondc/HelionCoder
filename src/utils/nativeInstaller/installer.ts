@@ -465,7 +465,7 @@ async function performVersionUpdate(
     logForDebugging(`Version ${version} already installed, updating symlink`)
   }
 
-  // Create direct symlink from ~/.local/bin/ktcoder to the version binary
+  // Create direct symlink from ~/.local/bin/Helioncoder to the version binary
   await removeDirectoryIfEmpty(executablePath)
   await updateSymlink(executablePath, installPath)
 
@@ -845,7 +845,7 @@ export async function checkInstall(
     })
   }
 
-  // Check if ktcoder executable exists and is valid.
+  // Check if Helioncoder executable exists and is valid.
   // On non-Windows, call readlink directly and route errno — ENOENT means
   // the executable is missing, EINVAL means it exists but isn't a symlink.
   // This avoids an access()→readlink() TOCTOU where deletion between the
@@ -856,7 +856,7 @@ export async function checkInstall(
     // On Windows it's a copied executable, not a symlink
     if (!(await isPossibleClaudeBinary(dirs.executable))) {
       messages.push({
-        message: `installMethod is native, but ktcoder command is missing or invalid at ${dirs.executable}`,
+        message: `installMethod is native, but Helioncoder command is missing or invalid at ${dirs.executable}`,
         userActionRequired: true,
         type: 'error',
       })
@@ -875,7 +875,7 @@ export async function checkInstall(
     } catch (e) {
       if (isENOENT(e)) {
         messages.push({
-          message: `installMethod is native, but ktcoder command not found at ${dirs.executable}`,
+          message: `installMethod is native, but Helioncoder command not found at ${dirs.executable}`,
           userActionRequired: true,
           type: 'error',
         })
@@ -1458,7 +1458,7 @@ async function isNpmSymlink(executablePath: string): Promise<boolean> {
 }
 
 /**
- * Remove the ktcoder symlink from the executable directory
+ * Remove the Helioncoder symlink from the executable directory
  * This is used when switching away from native installation
  * Will only remove if it's a native binary symlink, not npm-managed JS files
  */
@@ -1476,17 +1476,17 @@ export async function removeInstalledSymlink(): Promise<void> {
 
     // It's a native binary symlink, safe to remove
     await unlink(dirs.executable)
-    logForDebugging(`Removed ktcoder symlink at ${dirs.executable}`)
+    logForDebugging(`Removed Helioncoder symlink at ${dirs.executable}`)
   } catch (error) {
     if (isENOENT(error)) {
       return
     }
-    logError(new Error(`Failed to remove ktcoder symlink: ${error}`))
+    logError(new Error(`Failed to remove Helioncoder symlink: ${error}`))
   }
 }
 
 /**
- * Clean up old ktcoder aliases from shell configuration files
+ * Clean up old Helioncoder aliases from shell configuration files
  * Only handles alias removal, not PATH setup
  */
 export async function cleanupShellAliases(): Promise<SetupMessage[]> {
@@ -1503,11 +1503,11 @@ export async function cleanupShellAliases(): Promise<SetupMessage[]> {
       if (hadAlias) {
         await writeFileLines(configFile, filtered)
         messages.push({
-          message: `Removed ktcoder alias from ${configFile}. Run: unalias claude`,
+          message: `Removed Helioncoder alias from ${configFile}. Run: unalias claude`,
           userActionRequired: true,
           type: 'alias',
         })
-        logForDebugging(`Cleaned up ktcoder alias from ${shellType} config`)
+        logForDebugging(`Cleaned up Helioncoder alias from ${shellType} config`)
       }
     } catch (error) {
       logError(error)

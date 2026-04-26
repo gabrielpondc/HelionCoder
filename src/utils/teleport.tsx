@@ -438,7 +438,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
       logEvent('tengu_teleport_resume_error', {
         error_type: 'no_access_token' as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      throw new Error('ktcoder web sessions are unavailable in API-key mode because remote account authentication has been removed.');
+      throw new Error('Helioncoder web sessions are unavailable in API-key mode because remote account authentication has been removed.');
     }
 
     // Get organization UUID
@@ -466,7 +466,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
           });
           // Include host for GHE users so they know which instance the repo is on
           const notInRepoDisplay = repoValidation.sessionHost && repoValidation.sessionHost.toLowerCase() !== 'github.com' ? `${repoValidation.sessionHost}/${repoValidation.sessionRepo}` : repoValidation.sessionRepo;
-          throw new TeleportOperationError(`You must run ktcoder --teleport ${sessionId} from a checkout of ${notInRepoDisplay}.`, chalk.red(`You must run ktcoder --teleport ${sessionId} from a checkout of ${chalk.bold(notInRepoDisplay)}.\n`));
+          throw new TeleportOperationError(`You must run Helioncoder --teleport ${sessionId} from a checkout of ${notInRepoDisplay}.`, chalk.red(`You must run Helioncoder --teleport ${sessionId} from a checkout of ${chalk.bold(notInRepoDisplay)}.\n`));
         }
       case 'mismatch':
         {
@@ -478,7 +478,7 @@ export async function teleportResumeCodeSession(sessionId: string, onProgress?: 
           const hostsDiffer = repoValidation.sessionHost && repoValidation.currentHost && repoValidation.sessionHost.replace(/:\d+$/, '').toLowerCase() !== repoValidation.currentHost.replace(/:\d+$/, '').toLowerCase();
           const sessionDisplay = hostsDiffer ? `${repoValidation.sessionHost}/${repoValidation.sessionRepo}` : repoValidation.sessionRepo;
           const currentDisplay = hostsDiffer ? `${repoValidation.currentHost}/${repoValidation.currentRepo}` : repoValidation.currentRepo;
-          throw new TeleportOperationError(`You must run ktcoder --teleport ${sessionId} from a checkout of ${sessionDisplay}.\nThis repo is ${currentDisplay}.`, chalk.red(`You must run ktcoder --teleport ${sessionId} from a checkout of ${chalk.bold(sessionDisplay)}.\nThis repo is ${chalk.bold(currentDisplay)}.\n`));
+          throw new TeleportOperationError(`You must run Helioncoder --teleport ${sessionId} from a checkout of ${sessionDisplay}.\nThis repo is ${currentDisplay}.`, chalk.red(`You must run Helioncoder --teleport ${sessionId} from a checkout of ${chalk.bold(sessionDisplay)}.\nThis repo is ${chalk.bold(currentDisplay)}.\n`));
         }
       case 'error':
         throw new TeleportOperationError(repoValidation.errorMessage || 'Failed to validate session repository', chalk.red(`Error: ${repoValidation.errorMessage || 'Failed to validate session repository'}\n`));
@@ -608,7 +608,7 @@ export async function teleportFromSessionsAPI(sessionId: string, orgUUID: string
       logEvent('tengu_teleport_error_session_not_found_404', {
         sessionId: sessionId as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
       });
-      throw new TeleportOperationError(`${sessionId} not found.`, `${sessionId} not found.\n${chalk.dim('Run /status in ktcoder to check your account.')}`);
+      throw new TeleportOperationError(`${sessionId} not found.`, `${sessionId} not found.\n${chalk.dim('Run /status in Helioncoder to check your account.')}`);
     }
     logError(err);
     throw new Error(`Failed to fetch session from Sessions API: ${err.message}`);

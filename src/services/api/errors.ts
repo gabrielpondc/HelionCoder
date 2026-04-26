@@ -221,7 +221,7 @@ export function getOauthOrgNotAllowedErrorMessage(): string {
 }
 
 /**
- * Check if we're in CCR (ktcoder Remote) mode.
+ * Check if we're in CCR (Helioncoder Remote) mode.
  * In CCR mode, auth is handled via JWTs provided by the infrastructure,
  * not via /login. Transient auth errors should suggest retrying, not logging in.
  */
@@ -758,7 +758,7 @@ export function getAssistantMessageFromError(
     })
   }
 
-  // Check for invalid model name error for Ant users. ktcoder may be
+  // Check for invalid model name error for Ant users. Helioncoder may be
   // defaulting to a custom internal-only model for Ants, and there might be
   // Ants using new or unknown org IDs that haven't been gated in.
   if (

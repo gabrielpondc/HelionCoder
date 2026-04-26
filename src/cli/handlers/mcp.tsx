@@ -1,6 +1,6 @@
 /**
  * MCP subcommand handlers — extracted from main.tsx for lazy loading.
- * These are dynamically imported only when the corresponding `ktcoder mcp *` command runs.
+ * These are dynamically imported only when the corresponding `Helioncoder mcp *` command runs.
  */
 
 import { stat } from 'fs/promises';

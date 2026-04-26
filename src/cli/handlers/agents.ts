@@ -1,6 +1,6 @@
 /**
  * Agents subcommand handler — prints the list of configured agents.
- * Dynamically imported only when `ktcoder agents` runs.
+ * Dynamically imported only when `Helioncoder agents` runs.
  */
 
 import {

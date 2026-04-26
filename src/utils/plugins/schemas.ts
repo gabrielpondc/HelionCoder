@@ -323,7 +323,7 @@ const PluginManifestMetadataSchema = lazySchema(() =>
  * Schema for plugin hooks configuration (hooks.json)
  *
  * Defines the hooks that a plugin can provide to intercept and modify
- * ktcoder behavior at various lifecycle events.
+ * Helioncoder behavior at various lifecycle events.
  */
 export const PluginHooksSchema = lazySchema(() =>
   z.object({
@@ -879,7 +879,7 @@ const PluginManifestSettingsSchema = lazySchema(() =>
  * still fail, since a typo there is more likely to be an author mistake
  * than a vendor extension. Type mismatches and other validation errors
  * still fail at all levels. For developer feedback on unknown top-level
- * fields, use `ktcoder plugin validate`.
+ * fields, use `Helioncoder plugin validate`.
  */
 export const PluginManifestSchema = lazySchema(() =>
   z.object({
@@ -1228,7 +1228,7 @@ export function isLocalPluginSource(source: PluginSource): source is string {
  * For local sources (`file`/`directory`), `installLocation` IS the user's path —
  * it lives outside the plugins cache dir and marketplace operations on it are
  * read-only. For remote sources (`github`/`git`/`url`/`npm`), `installLocation`
- * is a cache-dir entry managed by ktcoder and subject to rm/re-clone.
+ * is a cache-dir entry managed by Helioncoder and subject to rm/re-clone.
  *
  * Contrast with isLocalPluginSource, which operates on PluginSource (the
  * per-plugin source inside a marketplace entry) and checks for `./` prefix.
@@ -1465,10 +1465,10 @@ export const InstalledPluginSchema = lazySchema(() =>
  * Schema for the installed_plugins.json file (V1 format)
  *
  * Contains a version number and maps plugin IDs to their installation metadata.
- * Maintained automatically by ktcoder, not edited by users.
+ * Maintained automatically by Helioncoder, not edited by users.
  *
  * The version field tracks schema changes. When the version doesn't match
- * the current schema version, ktcoder will update the file on next startup.
+ * the current schema version, Helioncoder will update the file on next startup.
  *
  * Example file:
  * {

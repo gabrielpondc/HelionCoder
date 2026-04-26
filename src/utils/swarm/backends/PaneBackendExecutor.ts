@@ -110,7 +110,7 @@ export class PaneBackendExecutor implements TeammateExecutor {
         await this.backend.enablePaneBorderStatus()
       }
 
-      // Build the command to spawn ktcoder with teammate identity
+      // Build the command to spawn Helioncoder with teammate identity
       const binaryPath = getTeammateCommand()
 
       // Build teammate identity CLI args

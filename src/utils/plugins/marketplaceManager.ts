@@ -1,5 +1,5 @@
 /**
- * Marketplace manager for ktcoder plugins
+ * Marketplace manager for Helioncoder plugins
  *
  * This module provides functionality to:
  * - Manage known marketplace sources (URLs, GitHub repos, npm packages, local files)
@@ -311,7 +311,7 @@ export async function loadKnownMarketplacesConfigSafe(): Promise<KnownMarketplac
     return await loadKnownMarketplacesConfig()
   } catch {
     // Inner function already logged via logForDebugging. Don't logError here —
-    // corrupted user config isn't a ktcoder bug, shouldn't hit the error file.
+    // corrupted user config isn't a Helioncoder bug, shouldn't hit the error file.
     return {}
   }
 }
@@ -1950,7 +1950,7 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
     throw new Error(
       `Marketplace '${name}' is registered from the read-only seed directory ` +
         `(${seedDir}) and will be re-registered on next startup. ` +
-        `To stop using its plugins: ktcoder plugin disable <plugin>@${name}`,
+        `To stop using its plugins: Helioncoder plugin disable <plugin>@${name}`,
     )
   }
 
@@ -2141,7 +2141,7 @@ export const getMarketplace = memoize(
       throw new Error(
         `Marketplace "${name}" has a relative source path (${entry.source.path}) ` +
           `in known_marketplaces.json — this is stale state from an older ` +
-          `ktcoder version. Run 'ktcoder marketplace remove ${name}' and ` +
+          `Helioncoder version. Run 'Helioncoder marketplace remove ${name}' and ` +
           `re-add it from the original project directory.`,
       )
     }
@@ -2310,7 +2310,7 @@ export async function refreshAllMarketplaces(): Promise<void> {
       continue
     }
     // inc-5046: same GCS intercept as refreshMarketplace() — bulk update
-    // hits this path on `ktcoder plugin marketplace update` (no name arg).
+    // hits this path on `Helioncoder plugin marketplace update` (no name arg).
     if (name === OFFICIAL_MARKETPLACE_NAME) {
       const sha = await fetchOfficialMarketplaceFromGcs(
         entry.installLocation,
@@ -2420,7 +2420,7 @@ export async function refreshMarketplace(
             `(${installLocation}) — expected a path inside ${cacheDir}. ` +
             `This can happen after cross-platform path writes or manual edits ` +
             `to known_marketplaces.json. ` +
-            `Run: ktcoder plugin marketplace remove "${name}" and re-add it.`,
+            `Run: Helioncoder plugin marketplace remove "${name}" and re-add it.`,
         )
       }
     }
@@ -2540,7 +2540,7 @@ export async function refreshMarketplace(
           `The marketplace.json file is no longer present in this repository.\n\n` +
             `${reason}\n` +
             `Source: ${sourceDisplay}\n\n` +
-            `You can remove this marketplace with: ktcoder plugin marketplace remove "${name}"`,
+            `You can remove this marketplace with: Helioncoder plugin marketplace remove "${name}"`,
         )
       }
     } else if (source.source === 'url') {

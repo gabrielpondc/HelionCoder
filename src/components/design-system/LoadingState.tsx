@@ -42,7 +42,7 @@ type LoadingStateProps = {
  * <LoadingState
  *   message="Loading sessions"
  *   bold
- *   subtitle="Fetching your ktcoder sessions..."
+ *   subtitle="Fetching your Helioncoder sessions..."
  * />
  */
 export function LoadingState(t0) {

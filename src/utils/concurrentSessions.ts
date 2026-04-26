@@ -23,7 +23,7 @@ function getSessionsDir(): string {
 }
 
 /**
- * Kind override from env. Set by the spawner (`ktcoder --bg`, daemon
+ * Kind override from env. Set by the spawner (`Helioncoder --bg`, daemon
  * supervisor) so the child can register without the parent having to
  * write the file for it — cleanup-on-exit wiring then works for free.
  * Gated so the env-var string is DCE'd from external builds.
@@ -37,7 +37,7 @@ function envSessionKind(): SessionKind | undefined {
 }
 
 /**
- * True when this REPL is running inside a `ktcoder --bg` tmux session.
+ * True when this REPL is running inside a `Helioncoder --bg` tmux session.
  * Exit paths (/exit, ctrl+c, ctrl+d) should detach the attached client
  * instead of killing the process.
  */
@@ -49,7 +49,7 @@ export function isBgSession(): boolean {
  * Write a PID file for this session and register cleanup.
  *
  * Registers all top-level sessions — interactive CLI, SDK (vscode, desktop,
- * typescript, python, -p), bg/daemon spawns — so `ktcoder ps` sees everything
+ * typescript, python, -p), bg/daemon spawns — so `Helioncoder ps` sees everything
  * the user might be running. Skips only teammates/subagents, which would
  * conflate swarm usage with genuine concurrency and pollute ps with noise.
  *
@@ -96,7 +96,7 @@ export async function registerSession(): Promise<boolean> {
       }),
     )
     // --resume / /resume mutates getSessionId() via switchSession. Without
-    // this, the PID file's sessionId goes stale and `ktcoder ps` sparkline
+    // this, the PID file's sessionId goes stale and `Helioncoder ps` sparkline
     // reads the wrong transcript.
     onSessionSwitch(id => {
       void updatePidFile({ sessionId: id })
@@ -148,7 +148,7 @@ export async function updateSessionBridgeId(
 }
 
 /**
- * Push live activity state for `ktcoder ps`. Fire-and-forget from REPL's
+ * Push live activity state for `Helioncoder ps`. Fire-and-forget from REPL's
  * status-change effect — a dropped write just means ps falls back to
  * transcript-tail derivation for one refresh.
  */

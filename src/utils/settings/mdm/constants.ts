@@ -8,11 +8,11 @@
 import { homedir, userInfo } from 'os'
 import { join } from 'path'
 
-/** macOS preference domain for ktcoder MDM profiles. */
+/** macOS preference domain for Helioncoder MDM profiles. */
 export const MACOS_PREFERENCE_DOMAIN = 'com.anthropic.claudecode'
 
 /**
- * Windows registry key paths for ktcoder MDM policies.
+ * Windows registry key paths for Helioncoder MDM policies.
  *
  * These keys live under SOFTWARE\Policies which is on the WOW64 shared key
  * list — both 32-bit and 64-bit processes see the same values without

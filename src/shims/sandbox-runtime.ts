@@ -57,7 +57,7 @@ export type SandboxViolationEvent = {
 export const SandboxRuntimeConfigSchema = z.object({}).passthrough()
 
 const UNAVAILABLE_ERROR =
-  '@anthropic-ai/sandbox-runtime is unavailable in this ktcoder build'
+  '@anthropic-ai/sandbox-runtime is unavailable in this Helioncoder build'
 
 const EMPTY_READ_CONFIG: FsReadRestrictionConfig = {
   denyOnly: [],

@@ -255,7 +255,7 @@ export function getParentCacheSuppressReason(
     : null
 }
 
-const SUGGESTION_PROMPT = `[SUGGESTION MODE: Suggest what the user might naturally type next into ktcoder.]
+const SUGGESTION_PROMPT = `[SUGGESTION MODE: Suggest what the user might naturally type next into Helioncoder.]
 
 FIRST: Look at the user's recent messages and original request.
 

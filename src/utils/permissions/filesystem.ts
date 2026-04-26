@@ -224,7 +224,7 @@ export function isClaudeSettingsPath(filePath: string): boolean {
   )
 }
 
-// Always ask when ktcoder tries to edit its own config files
+// Always ask when Helioncoder tries to edit its own config files
 function isClaudeConfigFilePath(filePath: string): boolean {
   if (isClaudeSettingsPath(filePath)) {
     return true
@@ -322,7 +322,7 @@ export function getClaudeTempDirName(): string {
  * Uses TMPDIR env var if set, otherwise:
  * - On Unix: /tmp/claude-{uid}/ (resolved to /private/tmp/claude-{uid}/ on macOS)
  * - On Windows: {tmpdir}/claude/ (e.g., C:\Users\{user}\AppData\Local\Temp\claude\)
- * This is a per-user temporary directory used by ktcoder for all temp files.
+ * This is a per-user temporary directory used by Helioncoder for all temp files.
  *
  * NOTE: We resolve symlinks to ensure this path matches the resolved paths used
  * in permission checks. On macOS, /tmp is a symlink to /private/tmp, so without
@@ -456,7 +456,7 @@ function isDangerousFilePathToAutoEdit(path: string): boolean {
         continue
       }
 
-      // Special case: .helioncoder/worktrees/ is a structural path (where ktcoder stores
+      // Special case: .helioncoder/worktrees/ is a structural path (where Helioncoder stores
       // git worktrees), not a user-created dangerous directory. Skip the .helioncoder
       // segment when it's followed by 'worktrees'. Any nested .helioncoder directories
       // within the worktree (not followed by 'worktrees') are still blocked.
@@ -611,7 +611,7 @@ function hasSuspiciousWindowsPathPattern(path: string): boolean {
  * This function performs comprehensive safety checks including:
  * - Suspicious Windows path patterns (NTFS streams, 8.3 names, long path prefixes, etc.)
  * - Claude config files (.helioncoder/settings.json, .helioncoder/commands/, .helioncoder/agents/)
- * - MCP CLI state files (managed internally by ktcoder)
+ * - MCP CLI state files (managed internally by Helioncoder)
  * - Dangerous files (.bashrc, .gitconfig, .git/, .vscode/, .idea/, etc.)
  *
  * IMPORTANT: This function checks BOTH the original path AND resolved symlink paths
@@ -1528,7 +1528,7 @@ export function checkEditableInternalPath(
       const jobsRootForms = getPathsForPermissionCheck(jobsRoot).map(normalize)
       // Hijack guard: every resolved form of the job dir must sit under
       // some resolved form of the jobs root. Resolving both sides handles
-      // the case where ~/.helioncoder is a symlink (e.g. to /data/ktcoder-config).
+      // the case where ~/.helioncoder is a symlink (e.g. to /data/Helioncoder-config).
       const isUnderJobsRoot = jobDirForms.every(jd =>
         jobsRootForms.some(jr => jd.startsWith(jr + sep)),
       )

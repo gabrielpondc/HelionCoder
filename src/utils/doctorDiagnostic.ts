@@ -230,8 +230,8 @@ async function detectMultipleInstallations(): Promise<
     const isWindows = getPlatform() === 'windows'
 
     // First check for active installations via bin/claude
-    // Linux / macOS have prefix/bin/ktcoder and prefix/lib/node_modules
-    // Windows has prefix/ktcoder and prefix/node_modules
+    // Linux / macOS have prefix/bin/Helioncoder and prefix/lib/node_modules
+    // Windows has prefix/Helioncoder and prefix/node_modules
     const globalBinPath = isWindows
       ? join(npmPrefix, 'claude')
       : join(npmPrefix, 'bin', 'claude')
@@ -267,7 +267,7 @@ async function detectMultipleInstallations(): Promise<
         installations.push({ type: 'npm-global', path: globalBinPath })
       }
     } else {
-      // If no bin/ktcoder exists, check for orphaned packages (no bin/ktcoder symlink)
+      // If no bin/Helioncoder exists, check for orphaned packages (no bin/Helioncoder symlink)
       for (const packageName of packagesToCheck) {
         const globalPackagePath = isWindows
           ? join(npmPrefix, 'node_modules', packageName)
@@ -435,14 +435,14 @@ async function detectConfigurationIssues(
     if (type === 'npm-local' && config.installMethod !== 'local') {
       warnings.push({
         issue: `Running from local installation but config install method is '${config.installMethod}'`,
-        fix: 'Consider using native installation: ktcoder install',
+        fix: 'Consider using native installation: Helioncoder install',
       })
     }
 
     if (type === 'native' && config.installMethod !== 'native') {
       warnings.push({
         issue: `Running native installation but config install method is '${config.installMethod}'`,
-        fix: 'Run ktcoder install to update configuration',
+        fix: 'Run Helioncoder install to update configuration',
       })
     }
   }
@@ -450,7 +450,7 @@ async function detectConfigurationIssues(
   if (type === 'npm-global' && (await localInstallationExists())) {
     warnings.push({
       issue: 'Local installation exists but not being used',
-      fix: 'Consider using native installation: ktcoder install',
+      fix: 'Consider using native installation: Helioncoder install',
     })
   }
 
@@ -459,11 +459,11 @@ async function detectConfigurationIssues(
 
   // Check if running local installation but it's not in PATH
   if (type === 'npm-local') {
-    // Check if ktcoder is already accessible via PATH
+    // Check if Helioncoder is already accessible via PATH
     const whichResult = await which('claude')
     const claudeInPath = !!whichResult
 
-    // Only show warning if ktcoder is NOT in PATH AND no valid alias exists
+    // Only show warning if Helioncoder is NOT in PATH AND no valid alias exists
     if (!claudeInPath && !validAlias) {
       if (existingAlias) {
         // Alias exists but points to invalid target
@@ -580,7 +580,7 @@ export async function getDoctorDiagnostic(): Promise<DiagnosticInfo> {
     if (!hasUpdatePermissions && !getAutoUpdaterDisabledReason()) {
       warnings.push({
         issue: 'Insufficient permissions for auto-updates',
-        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `ktcoder install` for native installation',
+        fix: 'Do one of: (1) Re-install node without sudo, or (2) Use `Helioncoder install` for native installation',
       })
     }
   }

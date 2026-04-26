@@ -4,8 +4,8 @@
  *
  * isRemoteManagedSettingsEligible() reads two separate keychain entries
  * SEQUENTIALLY via sync execSync during applySafeConfigEnvironmentVariables():
- *   1. "ktcoder-credentials" (OAuth tokens)  — ~32ms
- *   2. "ktcoder" (legacy API key)            — ~33ms
+ *   1. "Helioncoder-credentials" (OAuth tokens)  — ~32ms
+ *   2. "Helioncoder" (legacy API key)            — ~33ms
  * Sequential cost: ~65ms on every macOS startup.
  *
  * Firing both here lets the subprocesses run in parallel with the ~65ms of

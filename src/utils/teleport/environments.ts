@@ -33,7 +33,7 @@ export async function fetchEnvironments(): Promise<EnvironmentResource[]> {
   const accessToken = getClaudeAIOAuthTokens()?.accessToken
   if (!accessToken) {
     throw new Error(
-      'ktcoder web sessions are unavailable in API-key mode because remote account authentication has been removed.',
+      'Helioncoder web sessions are unavailable in API-key mode because remote account authentication has been removed.',
     )
   }
 

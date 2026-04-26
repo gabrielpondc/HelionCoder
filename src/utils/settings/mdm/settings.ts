@@ -1,5 +1,5 @@
 /**
- * MDM (Mobile Device Management) profile enforcement for ktcoder managed settings.
+ * MDM (Mobile Device Management) profile enforcement for Helioncoder managed settings.
  *
  * Reads enterprise settings from OS-level MDM configuration:
  * - macOS: `com.anthropic.claudecode` preference domain

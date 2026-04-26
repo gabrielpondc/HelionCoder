@@ -15,7 +15,7 @@ import {
 } from './settings/settings.js'
 
 /**
- * `ktcoder ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
+ * `Helioncoder ssh` remote: ANTHROPIC_UNIX_SOCKET routes auth through a -R forwarded
  * socket to a local proxy, and the launcher sets a handful of placeholder auth
  * env vars that the remote's ~/.helioncoder settings.env MUST NOT clobber (see
  * isAnthropicAuthEnabled). Strip them from any settings-sourced env object.

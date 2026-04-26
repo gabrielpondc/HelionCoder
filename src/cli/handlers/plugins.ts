@@ -1,6 +1,6 @@
 /**
  * Plugin and marketplace subcommand handlers — extracted from main.tsx for lazy loading.
- * These are dynamically imported only when `ktcoder plugin *` or `ktcoder plugin marketplace *` runs.
+ * These are dynamically imported only when `Helioncoder plugin *` or `Helioncoder plugin marketplace *` runs.
  */
 /* eslint-disable custom-rules/no-process-exit -- CLI subcommand handlers intentionally exit */
 import figures from 'figures'

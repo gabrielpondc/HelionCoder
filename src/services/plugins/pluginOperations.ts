@@ -2,7 +2,7 @@
  * Core plugin operations (install, uninstall, enable, disable, update)
  *
  * This module provides pure library functions that can be used by both:
- * - CLI commands (`ktcoder plugin install/uninstall/enable/disable/update`)
+ * - CLI commands (`Helioncoder plugin install/uninstall/enable/disable/update`)
  * - Interactive UI (ManagePlugins.tsx)
  *
  * Functions in this module:
@@ -487,7 +487,7 @@ export async function uninstallPluginOp(
       if (actualScope === 'project') {
         return {
           success: false,
-          message: `Plugin "${plugin}" is enabled at project scope (.helioncoder/settings.json, shared with your team). To disable just for you: ktcoder plugin disable ${plugin} --scope local`,
+          message: `Plugin "${plugin}" is enabled at project scope (.helioncoder/settings.json, shared with your team). To disable just for you: Helioncoder plugin disable ${plugin} --scope local`,
         }
       }
       return {

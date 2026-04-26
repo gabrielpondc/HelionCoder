@@ -1,5 +1,5 @@
 /**
- * REPL integration hook for `ktcoder ssh` sessions.
+ * REPL integration hook for `Helioncoder ssh` sessions.
  *
  * Sibling to useDirectConnect — same shape (isRemoteMode/sendMessage/
  * cancelRequest/disconnect), same REPL wiring, but drives an SSH child

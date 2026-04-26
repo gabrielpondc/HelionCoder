@@ -56,7 +56,7 @@ const BASE_PROMPT: string = feature('TRANSCRIPT_CLASSIFIER')
   : ''
 
 // External template is loaded separately so it's available for
-// `ktcoder auto-mode defaults` even in ant builds. Ant builds use
+// `Helioncoder auto-mode defaults` even in ant builds. Ant builds use
 // permissions_anthropic.txt at runtime but should dump external defaults.
 const EXTERNAL_PERMISSIONS_TEMPLATE: string = feature('TRANSCRIPT_CLASSIFIER')
   ? txtRequire(require('./yolo-classifier-prompts/permissions_external.txt'))
@@ -94,7 +94,7 @@ export type AutoModeRules = {
  * <user_*_to_replace> tags (user settings REPLACE these defaults), so the
  * captured tag contents ARE the defaults. Bullet items are single-line in the
  * template; each line starting with `- ` becomes one array entry.
- * Used by `ktcoder auto-mode defaults`. Always returns external defaults,
+ * Used by `Helioncoder auto-mode defaults`. Always returns external defaults,
  * never the Anthropic-internal template.
  */
 export function getDefaultExternalAutoModeRules(): AutoModeRules {
@@ -119,7 +119,7 @@ function extractTaggedBullets(tagName: string): string[] {
 
 /**
  * Returns the full external classifier system prompt with default rules (no user
- * overrides). Used by `ktcoder auto-mode critique` to show the model how the
+ * overrides). Used by `Helioncoder auto-mode critique` to show the model how the
  * classifier sees its instructions.
  */
 export function buildDefaultExternalSystemPrompt(): string {
@@ -147,7 +147,7 @@ function getAutoModeDumpDir(): string {
 
 /**
  * Dump the auto mode classifier request and response bodies to the per-user
- * ktcoder temp directory when CLAUDE_CODE_DUMP_AUTO_MODE is set. Files are
+ * Helioncoder temp directory when CLAUDE_CODE_DUMP_AUTO_MODE is set. Files are
  * named by unix timestamp: {timestamp}[.{suffix}].req.json and .res.json
  */
 async function maybeDumpAutoMode(
@@ -205,7 +205,7 @@ export function getAutoModeClassifierTranscript(): string | null {
 
 /**
  * Dump classifier input prompts + context-comparison diagnostics on API error.
- * Written to a session-scoped file in the ktcoder temp dir so /share can collect
+ * Written to a session-scoped file in the Helioncoder temp dir so /share can collect
  * it (replaces the old Desktop dump). Includes context numbers to help diagnose
  * projection divergence (classifier tokens >> main loop tokens).
  * Returns the dump path on success, null on failure.

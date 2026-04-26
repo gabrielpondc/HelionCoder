@@ -224,7 +224,7 @@ export const KeybindingsSchema = lazySchema(() =>
         .describe('Array of keybinding blocks by context'),
     })
     .describe(
-      'ktcoder keybindings configuration. Customize keyboard shortcuts by context.',
+      'Helioncoder keybindings configuration. Customize keyboard shortcuts by context.',
     ),
 )
 

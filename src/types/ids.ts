@@ -4,7 +4,7 @@
  */
 
 /**
- * A session ID uniquely identifies a ktcoder session.
+ * A session ID uniquely identifies a Helioncoder session.
  * Returned by getSessionId().
  */
 export type SessionId = string & { readonly __brand: 'SessionId' }

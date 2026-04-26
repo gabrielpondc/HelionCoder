@@ -561,9 +561,9 @@ export type Props = {
   taskListId?: string;
   // Remote session config for --remote mode (uses CCR as execution engine)
   remoteSessionConfig?: RemoteSessionConfig;
-  // Direct connect config for `ktcoder connect` mode (connects to a ktcoder server)
+  // Direct connect config for `Helioncoder connect` mode (connects to a Helioncoder server)
   directConnectConfig?: DirectConnectConfig;
-  // SSH session for `ktcoder ssh` mode (local REPL, remote tools over ssh)
+  // SSH session for `Helioncoder ssh` mode (local REPL, remote tools over ssh)
   sshSession?: SSHSession;
   // Thinking configuration to use when thinking is enabled
   thinkingConfig: ThinkingConfig;
@@ -1155,7 +1155,7 @@ export function REPL({
   const sessionStatus: TabStatusKind = isWaitingForApproval || isShowingLocalJSXCommand ? 'waiting' : isLoading ? 'busy' : 'idle';
   const waitingFor = sessionStatus !== 'waiting' ? undefined : toolUseConfirmQueue.length > 0 ? `approve ${toolUseConfirmQueue[0]!.tool.name}` : pendingWorkerRequest ? 'worker request' : pendingSandboxRequest ? 'sandbox request' : isShowingLocalJSXCommand ? 'dialog open' : 'input needed';
 
-  // Push status to the PID file for `ktcoder ps`. Fire-and-forget; ps falls
+  // Push status to the PID file for `Helioncoder ps`. Fire-and-forget; ps falls
   // back to transcript-tail derivation when this is missing/stale.
   useEffect(() => {
     if (feature('BG_SESSIONS')) {
@@ -1398,7 +1398,7 @@ export function REPL({
     setInProgressToolUseIDs
   });
 
-  // Direct connect hook - manages WebSocket to a ktcoder server for `ktcoder connect` mode
+  // Direct connect hook - manages WebSocket to a Helioncoder server for `Helioncoder connect` mode
   const directConnect = useDirectConnect({
     config: directConnectConfig,
     setMessages,
@@ -1407,7 +1407,7 @@ export function REPL({
     tools: combinedInitialTools
   });
 
-  // SSH session hook - manages ssh child process for `ktcoder ssh` mode.
+  // SSH session hook - manages ssh child process for `Helioncoder ssh` mode.
   // Same callback shape as useDirectConnect; only the transport under the
   // hood differs (ChildProcess stdin/stdout vs WebSocket).
   const sshRemote = useSSHSession({
@@ -1919,7 +1919,7 @@ export function REPL({
       // Skipped for in-session /branch: the existing ref is already correct
       // (branch preserves tool_use_ids), so there's no need to reconstruct.
       // createFork() does write content-replacement entries to the forked
-      // JSONL with the fork's sessionId, so `ktcoder -r {forkId}` also works.
+      // JSONL with the fork's sessionId, so `Helioncoder -r {forkId}` also works.
       if (contentReplacementStateRef.current && entrypoint !== 'fork') {
         contentReplacementStateRef.current = reconstructContentReplacementState(messages, log.contentReplacements ?? []);
       }
@@ -2680,7 +2680,7 @@ export function REPL({
     // which was broken by SessionStart hook messages (prepended via
     // useDeferredHookMessages) and attachment messages (appended by
     // processTextPrompt) — both pushed length past 1 on turn one, so the
-    // title silently fell through to the "ktcoder" default.
+    // title silently fell through to the "Helioncoder" default.
     if (!titleDisabled && !sessionTitle && !agentTitle && !haikuTitleAttemptedRef.current) {
       const firstUserMessage = newMessages.find(m => m.type === 'user' && !m.isMeta);
       const text = firstUserMessage?.type === 'user' ? getContentText(firstUserMessage.message.content) : null;

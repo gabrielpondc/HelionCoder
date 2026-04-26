@@ -862,7 +862,7 @@ export const getMemoryFiles = memoize(
     }
 
     // When running from a git worktree nested inside its main repo (e.g.,
-    // .helioncoder/worktrees/<name>/ from `ktcoder -w`), the upward walk passes
+    // .helioncoder/worktrees/<name>/ from `Helioncoder -w`), the upward walk passes
     // through both the worktree root and the main repo root. Both contain
     // checked-in files like HELIONCODER.md and .helioncoder/rules/*.md, so the same
     // content gets loaded twice. Skip Project-type (checked-in) files from

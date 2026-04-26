@@ -132,7 +132,7 @@ export type ProjectConfig = {
     sessionId: string
     hookBased?: boolean
   }
-  /** Spawn mode for `ktcoder remote-control` multi-session. Set by first-run dialog or `w` toggle. */
+  /** Spawn mode for `Helioncoder remote-control` multi-session. Set by first-run dialog or `w` toggle. */
   remoteControlSpawnMode?: 'same-dir' | 'worktree'
 }
 
@@ -382,7 +382,7 @@ export type GlobalConfig = {
   showSpinnerTree?: boolean // Whether to show the teammate spinner tree instead of pills
 
   // First start time tracking
-  firstStartTime?: string // ISO timestamp when ktcoder was first started on this machine
+  firstStartTime?: string // ISO timestamp when Helioncoder was first started on this machine
 
   messageIdleNotifThresholdMs: number // How long the user has to have been idle to get a notification that Claude is done generating
 
@@ -405,8 +405,8 @@ export type GlobalConfig = {
   inputNeededNotifEnabled?: boolean
   agentPushNotifEnabled?: boolean
 
-  // ktcoder usage tracking
-  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first ktcoder OAuth token
+  // Helioncoder usage tracking
+  claudeCodeFirstTokenDate?: string // ISO timestamp of the user's first Helioncoder OAuth token
 
   // Model switch callout tracking (ant-only)
   modelSwitchCalloutDismissed?: boolean // Whether user chose "Don't show again"
@@ -519,7 +519,7 @@ export type GlobalConfig = {
   lspRecommendationNeverPlugins?: string[] // Plugin IDs to never suggest
   lspRecommendationIgnoredCount?: number // Track ignored recommendations (stops after 5)
 
-  // ktcoder hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
+  // Helioncoder hint protocol state (<claude-code-hint /> tags from CLIs/SDKs).
   // Nested by hint type so future types (docs, mcp, ...) slot in without new
   // top-level keys.
   claudeCodeHints?: {
@@ -577,7 +577,7 @@ export type GlobalConfig = {
 
   // Disk cache for /api/claude_code/organizations/metrics_enabled.
   // Org-level settings change rarely; persisting across processes avoids a
-  // cold API call on every `ktcoder -p` invocation.
+  // cold API call on every `Helioncoder -p` invocation.
   metricsStatusCache?: {
     enabled: boolean
     timestamp: number

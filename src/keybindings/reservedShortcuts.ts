@@ -11,7 +11,7 @@ export type ReservedShortcut = {
 }
 
 /**
- * Shortcuts that cannot be rebound - they are hardcoded in ktcoder.
+ * Shortcuts that cannot be rebound - they are hardcoded in Helioncoder.
  */
 export const NON_REBINDABLE: ReservedShortcut[] = [
   {

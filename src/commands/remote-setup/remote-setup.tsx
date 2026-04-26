@@ -153,13 +153,13 @@ function Web({
     return <LoadingState message="Checking login status…" />;
   }
   if (step.name === 'uploading') {
-    return <LoadingState message="Connecting GitHub to ktcoder on the web…" />;
+    return <LoadingState message="Connecting GitHub to Helioncoder on the web…" />;
   }
   const token = step.token;
-  return <Dialog title="Connect ktcoder on the web to GitHub?" onCancel={handleCancel} hideInputGuide>
+  return <Dialog title="Connect Helioncoder on the web to GitHub?" onCancel={handleCancel} hideInputGuide>
       <Box flexDirection="column">
         <Text>
-          ktcoder on the web requires connecting to your GitHub account to clone
+          Helioncoder on the web requires connecting to your GitHub account to clone
           and push code on your behalf.
         </Text>
         <Text dimColor>

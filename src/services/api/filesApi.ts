@@ -2,7 +2,7 @@
  * Files API client for managing files
  *
  * This module provides functionality to download and upload files to Anthropic Public Files API.
- * Used by the ktcoder agent to download file attachments at session startup.
+ * Used by the Helioncoder agent to download file attachments at session startup.
  *
  * API Reference: https://docs.anthropic.com/en/api/files-content
  */
