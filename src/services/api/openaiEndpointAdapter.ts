@@ -27,6 +27,7 @@ type AnthropicBlock = {
 
 type ToolCallAccumulator = {
   id?: string
+  callId?: string
   name?: string
   arguments: string
 }
@@ -159,12 +160,27 @@ function toChatMessages(
   options: { responses?: boolean } = {},
 ) {
   const result: unknown[] = []
+  const pendingToolCallIds = new Set<string>()
+  const pushPendingToolResults = () => {
+    for (const id of pendingToolCallIds) {
+      result.push({
+        role: 'tool',
+        tool_call_id: id,
+        content: '[Tool result missing due to interrupted conversation state]',
+      })
+    }
+    pendingToolCallIds.clear()
+  }
+
   for (const message of messages) {
     if (message.role === 'user' && Array.isArray(message.content)) {
       const contentParts: ChatContentPart[] = []
       const flushUserContent = () => {
         if (contentParts.length === 0) {
           return
+        }
+        if (!options.responses) {
+          pushPendingToolResults()
         }
         result.push({
           role: 'user',
@@ -174,22 +190,35 @@ function toChatMessages(
         })
         contentParts.length = 0
       }
-      for (const block of message.content as AnthropicBlock[]) {
+
+      const blocks = message.content as AnthropicBlock[]
+      const orderedBlocks = options.responses
+        ? blocks
+        : [
+            ...blocks.filter(block => block.type === 'tool_result'),
+            ...blocks.filter(block => block.type !== 'tool_result'),
+          ]
+
+      for (const block of orderedBlocks) {
         if (block.type === 'tool_result') {
-          flushUserContent()
-          result.push({
-            role: 'tool',
-            tool_call_id: block.tool_use_id,
-            content: textFromContent(block.content),
-          })
+          if (block.tool_use_id) {
+            pendingToolCallIds.delete(block.tool_use_id)
+            result.push({
+              role: 'tool',
+              tool_call_id: block.tool_use_id,
+              content: textFromContent(block.content),
+            })
+          }
           const toolResultImages = imagePartsFromContent(block.content)
           if (toolResultImages.length > 0) {
-            result.push({
-              role: 'user',
-              content: options.responses
-                ? responsesContentFromChatParts(toolResultImages)
-                : chatContentFromParts(toolResultImages),
-            })
+            if (options.responses) {
+              result.push({
+                role: 'user',
+                content: responsesContentFromChatParts(toolResultImages),
+              })
+            } else {
+              contentParts.push(...toolResultImages)
+            }
           }
         } else if (block.type === 'text') {
           contentParts.push({ type: 'text', text: block.text ?? '' })
@@ -208,6 +237,9 @@ function toChatMessages(
     }
 
     if (message.role === 'assistant' && Array.isArray(message.content)) {
+      if (!options.responses) {
+        pushPendingToolResults()
+      }
       const toolCalls = (message.content as AnthropicBlock[])
         .filter(block => block.type === 'tool_use')
         .map(block => ({
@@ -223,14 +255,120 @@ function toChatMessages(
         content: textFromContent(message.content) || null,
         ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
       })
+      if (!options.responses) {
+        for (const call of toolCalls) {
+          if (call.id) {
+            pendingToolCallIds.add(call.id)
+          }
+        }
+      }
       continue
     }
 
+    if (!options.responses) {
+      pushPendingToolResults()
+    }
     result.push({
       role: message.role,
       content: textFromContent(message.content),
     })
   }
+  if (!options.responses) {
+    pushPendingToolResults()
+  }
+  return result
+}
+
+function toResponsesInput(messages: Array<{ role: string; content: unknown }>) {
+  const result: unknown[] = []
+  const pendingFunctionCallIds = new Set<string>()
+  const pushPendingFunctionOutputs = () => {
+    for (const id of pendingFunctionCallIds) {
+      result.push({
+        type: 'function_call_output',
+        call_id: id,
+        output: '[Tool result missing due to interrupted conversation state]',
+      })
+    }
+    pendingFunctionCallIds.clear()
+  }
+
+  for (const message of messages) {
+    if (message.role === 'user' && Array.isArray(message.content)) {
+      const contentParts: ChatContentPart[] = []
+      const flushUserContent = () => {
+        if (contentParts.length === 0) {
+          return
+        }
+        pushPendingFunctionOutputs()
+        result.push({
+          role: 'user',
+          content: responsesContentFromChatParts(contentParts),
+        })
+        contentParts.length = 0
+      }
+
+      const blocks = message.content as AnthropicBlock[]
+      const orderedBlocks = [
+        ...blocks.filter(block => block.type === 'tool_result'),
+        ...blocks.filter(block => block.type !== 'tool_result'),
+      ]
+
+      for (const block of orderedBlocks) {
+        if (block.type === 'tool_result') {
+          if (block.tool_use_id) {
+            pendingFunctionCallIds.delete(block.tool_use_id)
+            result.push({
+              type: 'function_call_output',
+              call_id: block.tool_use_id,
+              output: textFromContent(block.content),
+            })
+          }
+          contentParts.push(...imagePartsFromContent(block.content))
+        } else if (block.type === 'text') {
+          contentParts.push({ type: 'text', text: block.text ?? '' })
+        } else {
+          const imageUrl = imageUrlFromBlock(block)
+          if (imageUrl) {
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: imageUrl },
+            })
+          }
+        }
+      }
+      flushUserContent()
+      continue
+    }
+
+    if (message.role === 'assistant' && Array.isArray(message.content)) {
+      pushPendingFunctionOutputs()
+      const text = textFromContent(message.content)
+      if (text) {
+        result.push({ role: 'assistant', content: text })
+      }
+      for (const block of message.content as AnthropicBlock[]) {
+        if (block.type !== 'tool_use' || !block.id) {
+          continue
+        }
+        result.push({
+          type: 'function_call',
+          call_id: block.id,
+          name: block.name,
+          arguments: JSON.stringify(block.input ?? {}),
+        })
+        pendingFunctionCallIds.add(block.id)
+      }
+      continue
+    }
+
+    pushPendingFunctionOutputs()
+    result.push({
+      role: message.role,
+      content: textFromContent(message.content),
+    })
+  }
+  pushPendingFunctionOutputs()
   return result
 }
 
@@ -281,7 +419,7 @@ function toOpenAIRequest(body: Record<string, unknown>, mode: OpenAIEndpointMode
     }
   }
 
-  const input = toChatMessages(messages, { responses: true })
+  const input = toResponsesInput(messages)
   return {
     model: body.model,
     input,
@@ -624,6 +762,7 @@ function createResponsesStreamAdapter(model: string) {
   let textBlockOpen = false
   let blockIndex = 0
   const messageId = `msg_${randomUUID()}`
+  const toolCalls = new Map<number, ToolCallAccumulator>()
 
   return (event: string, data: any): string | undefined => {
     let output = ''
@@ -659,16 +798,72 @@ function createResponsesStreamAdapter(model: string) {
       })
     }
 
+    if (event === 'response.output_item.added' && data.item?.type === 'function_call') {
+      const index = Number(data.output_index ?? toolCalls.size)
+      toolCalls.set(index, {
+        id: data.item.id,
+        callId: data.item.call_id,
+        name: data.item.name,
+        arguments: data.item.arguments ?? '',
+      })
+    }
+
+    if (
+      event === 'response.function_call_arguments.delta' &&
+      typeof data.delta === 'string'
+    ) {
+      const index = Number(data.output_index ?? 0)
+      const current = toolCalls.get(index) ?? { arguments: '' }
+      current.arguments += data.delta
+      toolCalls.set(index, current)
+    }
+
+    if (event === 'response.function_call_arguments.done') {
+      const index = Number(data.output_index ?? 0)
+      const current = toolCalls.get(index) ?? { arguments: '' }
+      current.arguments = data.arguments ?? current.arguments
+      current.callId = data.call_id ?? current.callId
+      current.name = data.name ?? current.name
+      toolCalls.set(index, current)
+    }
+
     if (event === 'response.completed') {
       if (textBlockOpen) {
         output += sseEvent('content_block_stop', {
           type: 'content_block_stop',
           index: blockIndex,
         })
+        blockIndex += 1
+        textBlockOpen = false
+      }
+      for (const call of [...toolCalls.values()]) {
+        output += sseEvent('content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: call.callId ?? call.id ?? `toolu_${randomUUID()}`,
+            name: call.name,
+            input: {},
+          },
+        })
+        output += sseEvent('content_block_delta', {
+          type: 'content_block_delta',
+          index: blockIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: call.arguments || '{}',
+          },
+        })
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
       }
       output += sseEvent('message_delta', {
         type: 'message_delta',
-        delta: { stop_reason: 'end_turn' },
+        delta: { stop_reason: toolCalls.size > 0 ? 'tool_use' : 'end_turn' },
         usage: {
           output_tokens: data.response?.usage?.output_tokens ?? 0,
         },

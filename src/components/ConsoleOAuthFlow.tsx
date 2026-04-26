@@ -201,7 +201,9 @@ export function ConsoleOAuthFlow({
       process.env.OPENAI_MM_BASE_URL ||
       process.env.OPENAI_MULTIMODAL_BASE_URL ||
       process.env.OPENAI_MM_MODEL ||
-      process.env.OPENAI_MULTIMODAL_MODEL,
+      process.env.OPENAI_MULTIMODAL_MODEL ||
+      process.env.OPENAI_ENDPOINT_MODE ||
+      process.env.OPENAI_API_MODE,
   )
 
   useKeybinding(
@@ -646,19 +648,24 @@ export function ConsoleOAuthFlow({
           <Select
             options={[
               {
-                label: 'OpenAI 兼容',
+                label: 'OpenAI Chat Completions',
                 value: 'chat-completions',
                 description: '调用 /v1/chat/completions，多数中转服务使用这个协议',
               },
               {
-                label: 'Anthropic 兼容',
+                label: 'OpenAI Responses',
+                value: 'responses',
+                description: '调用 /v1/responses，适合官方 OpenAI 或明确支持 Responses 的服务商',
+              },
+              {
+                label: 'Anthropic Messages',
                 value: 'messages',
                 description: '调用 /v1/messages，适合 Anthropic/Claude 兼容网关',
               },
             ]}
             defaultValue={endpointMode}
             onChange={handleEndpointModeChoice}
-            visibleOptionCount={2}
+            visibleOptionCount={3}
           />
         </Box>
       ) : null}
