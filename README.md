@@ -16,6 +16,7 @@ HelionCoder 是一个基于 OpenAI 兼容 API 的终端 AI 编程 CLI。项目�
 - [项目内容](#项目内容)
 - [环境要求](#环境要求)
 - [快速安装](#快速安装)
+- [卸载](#卸载)
 - [基础配置](#基础配置)
 - [本地开发](#本地开发)
 - [编译与打包流程](#编译与打包流程)
@@ -78,6 +79,22 @@ $env:HELION_VERSION="0.0.4"; iwr https://raw.githubusercontent.com/gabrielpondc/
 ```bash
 helion-coder --version
 ```
+
+## 卸载
+
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/uninstall.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+iwr https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/uninstall.ps1 -UseB | iex
+```
+
+卸载脚本只移除 `helion-coder` 命令和 Windows 用户 PATH 中的安装目录，不会删除 `~/.helioncoder` 中的配置、历史和项目数据。
 
 安装依赖：
 
