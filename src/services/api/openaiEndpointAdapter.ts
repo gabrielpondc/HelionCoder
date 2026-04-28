@@ -194,6 +194,44 @@ function textFromSystem(system: unknown): string | undefined {
   return typeof system === 'string' && system.trim() ? system : undefined
 }
 
+function validOpenAIToolName(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined
+  }
+  const trimmed = value.trim()
+  return /^[A-Za-z0-9_-]{1,64}$/.test(trimmed) ? trimmed : undefined
+}
+
+function openAIToolCallName(call: any): string | undefined {
+  return validOpenAIToolName(
+    call?.function?.name ?? call?.name ?? call?.tool_name ?? call?.function_name,
+  )
+}
+
+function openAIToolCallArguments(call: any): string {
+  const value =
+    call?.function?.arguments ?? call?.arguments ?? call?.args ?? call?.input
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value && typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return '{}'
+    }
+  }
+  return ''
+}
+
+function anthropicToolUseName(block: AnthropicBlock): string | undefined {
+  return validOpenAIToolName(block.name)
+}
+
+function anthropicToolUseId(block: AnthropicBlock): string | undefined {
+  return typeof block.id === 'string' && block.id.trim() ? block.id : undefined
+}
+
 function toOpenAIChatToolChoice(toolChoice: unknown): unknown | undefined {
   if (!toolChoice || typeof toolChoice !== 'object') {
     return undefined
@@ -209,10 +247,11 @@ function toOpenAIChatToolChoice(toolChoice: unknown): unknown | undefined {
   if (choice.type === 'any') {
     return 'required'
   }
-  if (choice.type === 'tool' && choice.name) {
+  const name = validOpenAIToolName(choice.name)
+  if (choice.type === 'tool' && name) {
     return {
       type: 'function',
-      function: { name: choice.name },
+      function: { name },
     }
   }
   return undefined
@@ -345,13 +384,21 @@ function toChatMessages(
 
       for (const block of orderedBlocks) {
         if (block.type === 'tool_result') {
-          if (block.tool_use_id) {
+          if (block.tool_use_id && pendingToolCallIds.has(block.tool_use_id)) {
             pendingToolCallIds.delete(block.tool_use_id)
             result.push({
               role: 'tool',
               tool_call_id: block.tool_use_id,
               content: textFromContent(block.content),
             })
+          } else {
+            const orphanText = textFromContent(block.content)
+            if (orphanText) {
+              contentParts.push({
+                type: 'text',
+                text: `[Tool result without matching call]\n${orphanText}`,
+              })
+            }
           }
           const toolResultImages = imagePartsFromContent(block.content)
           if (toolResultImages.length > 0) {
@@ -386,17 +433,27 @@ function toChatMessages(
       }
       const toolCalls = (message.content as AnthropicBlock[])
         .filter(block => block.type === 'tool_use')
-        .map(block => ({
-          id: block.id,
-          type: 'function',
-          function: {
-            name: block.name,
-            arguments: JSON.stringify(block.input ?? {}),
-          },
-        }))
+        .flatMap(block => {
+          const id = anthropicToolUseId(block)
+          const name = anthropicToolUseName(block)
+          if (!id || !name) {
+            return []
+          }
+          return [
+            {
+              id,
+              type: 'function',
+              function: {
+                name,
+                arguments: JSON.stringify(block.input ?? {}),
+              },
+            },
+          ]
+        })
+      const assistantText = textFromContent(message.content)
       result.push({
         role: 'assistant',
-        content: textFromContent(message.content) || null,
+        content: assistantText || (toolCalls.length > 0 ? null : ''),
         ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
       })
       if (!options.responses) {
@@ -460,13 +517,21 @@ function toResponsesInput(messages: Array<{ role: string; content: unknown }>) {
 
       for (const block of orderedBlocks) {
         if (block.type === 'tool_result') {
-          if (block.tool_use_id) {
+          if (block.tool_use_id && pendingFunctionCallIds.has(block.tool_use_id)) {
             pendingFunctionCallIds.delete(block.tool_use_id)
             result.push({
               type: 'function_call_output',
               call_id: block.tool_use_id,
               output: textFromContent(block.content),
             })
+          } else {
+            const orphanText = textFromContent(block.content)
+            if (orphanText) {
+              contentParts.push({
+                type: 'text',
+                text: `[Tool result without matching call]\n${orphanText}`,
+              })
+            }
           }
           contentParts.push(...imagePartsFromContent(block.content))
         } else if (block.type === 'text') {
@@ -492,16 +557,18 @@ function toResponsesInput(messages: Array<{ role: string; content: unknown }>) {
         result.push({ role: 'assistant', content: text })
       }
       for (const block of message.content as AnthropicBlock[]) {
-        if (block.type !== 'tool_use' || !block.id) {
+        const id = anthropicToolUseId(block)
+        const name = anthropicToolUseName(block)
+        if (block.type !== 'tool_use' || !id || !name) {
           continue
         }
         result.push({
           type: 'function_call',
-          call_id: block.id,
-          name: block.name,
+          call_id: id,
+          name,
           arguments: JSON.stringify(block.input ?? {}),
         })
-        pendingFunctionCallIds.add(block.id)
+        pendingFunctionCallIds.add(id)
       }
       continue
     }
@@ -520,32 +587,46 @@ function toChatTools(tools: unknown): unknown[] | undefined {
   if (!Array.isArray(tools) || tools.length === 0) {
     return undefined
   }
-  return tools.map(tool => {
+  const converted = tools.flatMap(tool => {
     const t = tool as { name?: string; description?: string; input_schema?: unknown }
-    return {
-      type: 'function',
-      function: {
-        name: t.name,
-        description: t.description,
-        parameters: t.input_schema ?? { type: 'object', properties: {} },
-      },
+    const name = validOpenAIToolName(t.name)
+    if (!name) {
+      return []
     }
+    return [
+      {
+        type: 'function',
+        function: {
+          name,
+          description: t.description,
+          parameters: t.input_schema ?? { type: 'object', properties: {} },
+        },
+      },
+    ]
   })
+  return converted.length > 0 ? converted : undefined
 }
 
 function toResponseTools(tools: unknown): unknown[] | undefined {
   if (!Array.isArray(tools) || tools.length === 0) {
     return undefined
   }
-  return tools.map(tool => {
+  const converted = tools.flatMap(tool => {
     const t = tool as { name?: string; description?: string; input_schema?: unknown }
-    return {
-      type: 'function',
-      name: t.name,
-      description: t.description,
-      parameters: t.input_schema ?? { type: 'object', properties: {} },
+    const name = validOpenAIToolName(t.name)
+    if (!name) {
+      return []
     }
+    return [
+      {
+        type: 'function',
+        name,
+        description: t.description,
+        parameters: t.input_schema ?? { type: 'object', properties: {} },
+      },
+    ]
   })
+  return converted.length > 0 ? converted : undefined
 }
 
 function toOpenAIRequest(body: Record<string, unknown>, mode: OpenAIEndpointMode) {
@@ -619,11 +700,15 @@ function extractResponseContent(payload: any): AnthropicBlock[] {
       blocks.push({ type: 'text', text: String(message.content) })
     }
     for (const call of message.tool_calls ?? []) {
+      const name = openAIToolCallName(call)
+      if (!name) {
+        continue
+      }
       blocks.push({
         type: 'tool_use',
         id: call.id ?? `toolu_${randomUUID()}`,
-        name: call.function?.name,
-        input: parseJsonObject(call.function?.arguments),
+        name,
+        input: parseJsonObject(openAIToolCallArguments(call)),
       })
     }
     return blocks.length > 0 ? blocks : [{ type: 'text', text: '' }]
@@ -632,12 +717,15 @@ function extractResponseContent(payload: any): AnthropicBlock[] {
   const blocks: AnthropicBlock[] = []
   for (const item of payload?.output ?? []) {
     if (item?.type === 'function_call') {
-      blocks.push({
-        type: 'tool_use',
-        id: item.call_id ?? item.id ?? `toolu_${randomUUID()}`,
-        name: item.name,
-        input: parseJsonObject(item.arguments),
-      })
+      const name = validOpenAIToolName(item.name)
+      if (name) {
+        blocks.push({
+          type: 'tool_use',
+          id: item.call_id ?? item.id ?? `toolu_${randomUUID()}`,
+          name,
+          input: parseJsonObject(item.arguments),
+        })
+      }
     }
     for (const part of item?.content ?? []) {
       if (part?.type === 'output_text') {
@@ -895,8 +983,8 @@ function createChatStreamAdapter(model: string) {
       const index = Number(call.index ?? 0)
       const current = toolCalls.get(index) ?? { arguments: '' }
       current.id = call.id ?? current.id
-      current.name = call.function?.name ?? current.name
-      current.arguments += call.function?.arguments ?? ''
+      current.name = openAIToolCallName(call) ?? current.name
+      current.arguments += openAIToolCallArguments(call)
       toolCalls.set(index, current)
     }
 
@@ -909,14 +997,17 @@ function createChatStreamAdapter(model: string) {
         blockIndex += 1
         textBlockOpen = false
       }
-      for (const call of [...toolCalls.values()]) {
+      const validToolCalls = [...toolCalls.values()].filter(call =>
+        validOpenAIToolName(call.name),
+      )
+      for (const call of validToolCalls) {
         output += sseEvent('content_block_start', {
           type: 'content_block_start',
           index: blockIndex,
           content_block: {
             type: 'tool_use',
             id: call.id ?? `toolu_${randomUUID()}`,
-            name: call.name,
+            name: validOpenAIToolName(call.name),
             input: {},
           },
         })
@@ -938,7 +1029,7 @@ function createChatStreamAdapter(model: string) {
         type: 'message_delta',
         delta: {
           stop_reason:
-            choice.finish_reason === 'tool_calls'
+            choice.finish_reason === 'tool_calls' && validToolCalls.length > 0
               ? 'tool_use'
               : choice.finish_reason === 'length'
                 ? 'max_tokens'
@@ -1001,8 +1092,8 @@ function createResponsesStreamAdapter(model: string) {
       toolCalls.set(index, {
         id: data.item.id,
         callId: data.item.call_id,
-        name: data.item.name,
-        arguments: data.item.arguments ?? '',
+        name: validOpenAIToolName(data.item.name),
+        arguments: openAIToolCallArguments(data.item),
       })
     }
 
@@ -1011,8 +1102,8 @@ function createResponsesStreamAdapter(model: string) {
       const current = toolCalls.get(index) ?? { arguments: '' }
       current.id = data.item.id ?? current.id
       current.callId = data.item.call_id ?? current.callId
-      current.name = data.item.name ?? current.name
-      current.arguments = data.item.arguments ?? current.arguments
+      current.name = validOpenAIToolName(data.item.name) ?? current.name
+      current.arguments = openAIToolCallArguments(data.item) || current.arguments
       toolCalls.set(index, current)
     }
 
@@ -1031,7 +1122,7 @@ function createResponsesStreamAdapter(model: string) {
       const current = toolCalls.get(index) ?? { arguments: '' }
       current.arguments = data.arguments ?? current.arguments
       current.callId = data.call_id ?? current.callId
-      current.name = data.name ?? current.name
+      current.name = validOpenAIToolName(data.name) ?? current.name
       toolCalls.set(index, current)
     }
 
@@ -1044,14 +1135,17 @@ function createResponsesStreamAdapter(model: string) {
         blockIndex += 1
         textBlockOpen = false
       }
-      for (const call of [...toolCalls.values()]) {
+      const validToolCalls = [...toolCalls.values()].filter(call =>
+        validOpenAIToolName(call.name),
+      )
+      for (const call of validToolCalls) {
         output += sseEvent('content_block_start', {
           type: 'content_block_start',
           index: blockIndex,
           content_block: {
             type: 'tool_use',
             id: call.callId ?? call.id ?? `toolu_${randomUUID()}`,
-            name: call.name,
+            name: validOpenAIToolName(call.name),
             input: {},
           },
         })
@@ -1071,7 +1165,7 @@ function createResponsesStreamAdapter(model: string) {
       }
       output += sseEvent('message_delta', {
         type: 'message_delta',
-        delta: { stop_reason: toolCalls.size > 0 ? 'tool_use' : 'end_turn' },
+        delta: { stop_reason: validToolCalls.length > 0 ? 'tool_use' : 'end_turn' },
         usage: {
           output_tokens: data.response?.usage?.output_tokens ?? 0,
         },

@@ -413,6 +413,7 @@ export async function setup(
       process.exit(1)
     }
 
+    
     if (
       process.env.USER_TYPE === 'ant' &&
       // Skip for Desktop's local agent mode — same trust model as CCR/BYOC

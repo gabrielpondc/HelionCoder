@@ -116,7 +116,8 @@ export const CLAUDE_CODE_GUIDE_AGENT: BuiltInAgentDefinition = {
       ],
   source: 'built-in',
   baseDir: 'built-in',
-  model: 'haiku',
+  // Inherit the user's selected model; OpenAI-compatible deployments may not
+  // provide Claude family aliases like "haiku".
   permissionMode: 'dontAsk',
   getSystemPrompt({ toolUseContext }) {
     const commands = toolUseContext.options.commands
@@ -203,4 +204,3 @@ When answering questions, consider these configured features and proactively sug
     return basePromptWithFeedback
   },
 }
-

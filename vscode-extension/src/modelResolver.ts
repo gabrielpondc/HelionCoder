@@ -13,38 +13,15 @@ export interface ModelCandidate {
   description?: string;
 }
 
+export interface DefaultModelInfo {
+  id: string;
+  source: string;
+}
+
 interface EndpointConfig {
   apiKey?: string;
   baseUrl?: string;
 }
-
-const BUILT_IN_MODELS: ModelCandidate[] = [
-  {
-    id: 'default',
-    label: 'CLI 默认',
-    source: '内置',
-    description: '使用 HelionCoder CLI 的默认模型解析。',
-  },
-  {
-    id: 'gpt-5.4',
-    label: 'gpt-5.4',
-    source: '项目默认',
-    description: '当前 HelionCoder 源码的主默认模型。',
-  },
-  {
-    id: 'gpt-5.4-mini',
-    label: 'gpt-5.4-mini',
-    source: '项目默认',
-    description: '当前 HelionCoder 源码的小型快速默认模型。',
-  },
-  { id: 'sonnet', label: 'sonnet', source: 'CLI 别名' },
-  { id: 'opus', label: 'opus', source: 'CLI 别名' },
-  { id: 'haiku', label: 'haiku', source: 'CLI 别名' },
-  { id: 'best', label: 'best', source: 'CLI 别名' },
-  { id: 'sonnet[1m]', label: 'sonnet[1m]', source: 'CLI 别名' },
-  { id: 'opus[1m]', label: 'opus[1m]', source: 'CLI 别名' },
-  { id: 'opusplan', label: 'opusplan', source: 'CLI 别名' },
-];
 
 export class ModelResolver {
   constructor(private readonly output: vscode.OutputChannel) {}
@@ -57,6 +34,10 @@ export class ModelResolver {
     return model.length > 0 ? model : undefined;
   }
 
+  getDefaultModelInfo(): DefaultModelInfo {
+    return resolveCliDefaultModel();
+  }
+
   async setSelectedModel(model: string | undefined): Promise<void> {
     await vscode.workspace
       .getConfiguration('helionCoder')
@@ -65,27 +46,34 @@ export class ModelResolver {
 
   async listModels(options: { refreshApi?: boolean } = {}): Promise<ModelCandidate[]> {
     const models: ModelCandidate[] = [];
+    const defaultModel = this.getDefaultModelInfo();
 
-    for (const candidate of BUILT_IN_MODELS) {
-      models.push(candidate);
-    }
+    models.push({
+      id: 'default',
+      label: `命令行默认：${defaultModel.id}`,
+      source: defaultModel.source,
+      description: '不传 --model，让 HelionCoder CLI 按当前配置解析默认模型。',
+    });
 
-    this.addConfiguredModels(models);
-    this.addEnvironmentModels(models);
-    this.addFileModels(models);
-
+    let apiModels: ModelCandidate[] = [];
     if (
       options.refreshApi ||
       vscode.workspace.getConfiguration('helionCoder').get<boolean>('autoDetectModels', true)
     ) {
-      const apiModels = await this.fetchApiModels().catch(error => {
+      apiModels = await this.fetchApiModels().catch(error => {
         this.output.appendLine(
           `已跳过模型自动检测：${error instanceof Error ? error.message : String(error)}`,
         );
         return [];
       });
+    }
+
+    if (apiModels.length > 0) {
       models.push(...apiModels);
     }
+    this.addConfiguredModels(models);
+    this.addEnvironmentModels(models);
+    this.addFileModels(models);
 
     const selected = this.getSelectedModel();
     if (selected) {
@@ -104,7 +92,7 @@ export class ModelResolver {
     const models = await this.listModels({ refreshApi: true });
     const selected = this.getSelectedModel();
     const items: vscode.QuickPickItem[] = models.map(model => ({
-      label: model.id === 'default' ? '$(circle-slash) CLI 默认' : model.label,
+      label: model.id === 'default' ? `$(check) ${model.label}` : model.label,
       description:
         model.id === selected
           ? `${model.source} · 当前`
@@ -121,7 +109,7 @@ export class ModelResolver {
 
     const picked = await vscode.window.showQuickPick(items, {
       title: '选择 HelionCoder 模型',
-      placeHolder: selected ?? 'CLI 默认',
+      placeHolder: selected ?? '命令行默认',
       matchOnDescription: true,
       matchOnDetail: true,
     });
@@ -247,25 +235,34 @@ export class ModelResolver {
       fromFiles.apiKey ??= firstString(
         data.openaiApiKey,
         data.primaryApiKey,
+        data.apiKey,
+        data.api_key,
         openai.apiKey,
+        openai.api_key,
+        openai.token,
       );
       fromFiles.baseUrl ??= firstString(
         data.openaiBaseUrl,
+        data.openaiModelOptionsCacheBaseUrl,
+        data.baseUrl,
+        data.baseURL,
+        data.apiBaseUrl,
         openai.baseUrl,
         openai.baseURL,
+        openai.apiBaseUrl,
       );
     }
 
     return {
       apiKey: firstString(
         process.env.OPENAI_API_KEY,
-        process.env.ANTHROPIC_API_KEY,
         fromFiles.apiKey,
+        process.env.ANTHROPIC_API_KEY,
       ),
       baseUrl: firstString(
         process.env.OPENAI_BASE_URL,
-        process.env.ANTHROPIC_BASE_URL,
         fromFiles.baseUrl,
+        process.env.ANTHROPIC_BASE_URL,
       ),
     };
   }
@@ -280,6 +277,12 @@ function collectModelsFromObject(
   addModel(models, data.openaiModel, source);
   addModel(models, data.openaiSmallModel, source);
   addModel(models, data.openaiMultimodalModel, source);
+
+  if (Array.isArray(data.openaiModelOptionsCache)) {
+    for (const model of data.openaiModelOptionsCache) {
+      addModel(models, model, `${source} /v1/models 缓存`);
+    }
+  }
 
   if (Array.isArray(data.availableModels)) {
     for (const model of data.availableModels) {
@@ -309,6 +312,51 @@ function collectModelsFromObject(
       addModel(models, value, `${source} 模型覆盖`);
     }
   }
+}
+
+function resolveCliDefaultModel(): DefaultModelInfo {
+  const explicit = firstString(process.env.ANTHROPIC_MODEL);
+  if (explicit) {
+    return { id: explicit, source: '环境变量 ANTHROPIC_MODEL' };
+  }
+
+  for (const filePath of getConfigFileCandidates()) {
+    const data = readJson(filePath);
+    if (!data) {
+      continue;
+    }
+    const settingsModel = firstString(data.model);
+    if (settingsModel) {
+      return { id: settingsModel, source: shortPath(filePath) };
+    }
+  }
+
+  const openaiEnv = firstString(process.env.OPENAI_MODEL);
+  if (openaiEnv) {
+    return { id: openaiEnv, source: '环境变量 OPENAI_MODEL' };
+  }
+
+  for (const filePath of getConfigFileCandidates()) {
+    const data = readJson(filePath);
+    if (!data) {
+      continue;
+    }
+    const openai =
+      data.openai && typeof data.openai === 'object'
+        ? (data.openai as Record<string, unknown>)
+        : {};
+    const configured = firstString(data.openaiModel, openai.model);
+    if (configured) {
+      return { id: configured, source: shortPath(filePath) };
+    }
+  }
+
+  const sonnetEnv = firstString(process.env.ANTHROPIC_DEFAULT_SONNET_MODEL);
+  if (sonnetEnv) {
+    return { id: sonnetEnv, source: '环境变量 ANTHROPIC_DEFAULT_SONNET_MODEL' };
+  }
+
+  return { id: 'gpt-5.4', source: '内置默认' };
 }
 
 function getConfigFileCandidates(): string[] {
@@ -428,7 +476,12 @@ function requestJson(url: string, apiKey: string, timeoutMs: number): Promise<un
         });
         res.on('end', () => {
           if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-            reject(new Error(`/models 返回 HTTP ${res.statusCode ?? '未知'}`));
+            const status = res.statusCode ?? '未知';
+            const detail =
+              status === 401
+                ? '（未授权：请求已携带 token，请检查 API Key 是否和 Base URL 匹配）'
+                : '';
+            reject(new Error(`/models 返回 HTTP ${status}${detail}`));
             return;
           }
           try {

@@ -1,11 +1,29 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { HelionCli, getWorkspaceCwd } from './cli';
-import { getEditorSnapshot } from './editorContext';
+
+interface CompletionSnapshot {
+  filePath: string;
+  relativePath: string;
+  languageId: string;
+  cursorLine: number;
+  cursorCharacter: number;
+  currentLine: string;
+  linePrefix: string;
+  prefix: string;
+  suffix: string;
+}
 
 export class HelionInlineCompletionProvider
   implements vscode.InlineCompletionItemProvider
 {
+  private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
+
   constructor(private readonly cli: HelionCli) {}
+
+  dispose(): void {
+    this.status.dispose();
+  }
 
   async provideInlineCompletionItems(
     document: vscode.TextDocument,
@@ -37,77 +55,130 @@ export class HelionInlineCompletionProvider
 
     const maxPrefixChars = config.get<number>('maxPrefixChars', 5000);
     const maxSuffixChars = config.get<number>('maxSuffixChars', 2000);
-    const snapshot = getEditorSnapshot(maxPrefixChars, maxSuffixChars);
-    if (!snapshot || snapshot.filePath !== document.uri.fsPath) {
-      return undefined;
-    }
+    const snapshot = getCompletionSnapshot(document, position, maxPrefixChars, maxSuffixChars);
 
     const prompt = buildCompletionPrompt(snapshot);
     const timeoutMs = config.get<number>('timeoutMs', 15000);
+    const cwd = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? getWorkspaceCwd();
 
     try {
+      this.showStatus('$(sparkle) Helion 补全中...', 0);
       const result = await this.cli.runPrompt(prompt, {
-        cwd: getWorkspaceCwd(),
+        cwd,
         timeoutMs,
         cancellation: token,
+        permissionMode: 'dontAsk',
       });
-      const insertText = sanitizeCompletion(result.stdout);
+      const insertText = sanitizeCompletion(result.stdout, snapshot);
       if (!insertText) {
+        this.showStatus('Helion 没有补全建议', 2200);
         return undefined;
       }
 
+      this.showStatus('$(check) Helion 补全已生成', 2200);
       return [
         new vscode.InlineCompletionItem(
           insertText,
           new vscode.Range(position, position),
-          {
-            title: 'Accept Helion Completion',
-            command: 'editor.action.inlineSuggest.commit',
-          },
         ),
       ];
     } catch (error) {
       if (!token.isCancellationRequested) {
         console.warn(error);
+        this.showStatus('Helion 补全失败', 2600);
       }
       return undefined;
     }
   }
+
+  private showStatus(text: string, hideAfterMs: number): void {
+    this.status.text = text;
+    this.status.tooltip = '来自 HelionCoder 的编辑器行内补全';
+    this.status.show();
+    if (hideAfterMs > 0) {
+      setTimeout(() => this.status.hide(), hideAfterMs);
+    }
+  }
 }
 
-function buildCompletionPrompt(snapshot: ReturnType<typeof getEditorSnapshot> & {}): string {
+function getCompletionSnapshot(
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  maxPrefixChars: number,
+  maxSuffixChars: number,
+): CompletionSnapshot {
+  const start = new vscode.Position(0, 0);
+  const end = document.lineAt(document.lineCount - 1).range.end;
+  const workspaceRoot =
+    vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? getWorkspaceCwd();
+  const filePath = document.uri.fsPath;
+  const prefix = trimStartByChars(
+    document.getText(new vscode.Range(start, position)),
+    maxPrefixChars,
+  );
+  const suffix = trimEndByChars(
+    document.getText(new vscode.Range(position, end)),
+    maxSuffixChars,
+  );
+
+  return {
+    filePath,
+    relativePath: path.relative(workspaceRoot, filePath) || path.basename(filePath),
+    languageId: document.languageId,
+    cursorLine: position.line + 1,
+    cursorCharacter: position.character + 1,
+    currentLine: document.lineAt(position.line).text,
+    linePrefix: document.lineAt(position.line).text.slice(0, position.character),
+    prefix,
+    suffix,
+  };
+}
+
+function buildCompletionPrompt(snapshot: CompletionSnapshot): string {
   return [
-    'You are an inline code completion engine inside VS Code.',
+    'Task: /complete inline code completion.',
+    'You are HelionCoder running as a VS Code inline completion engine.',
     'Return only the exact code text to insert at <CURSOR>.',
     'Do not include markdown fences, prose, explanations, quotes, or placeholders.',
+    'Do not repeat any code that already appears before <CURSOR>.',
+    'Do not repeat any code that already appears after <CURSOR>.',
+    'Preserve the correct indentation for the inserted text.',
     'If no useful completion is possible, return an empty response.',
     `File: ${snapshot.relativePath}`,
     `Language: ${snapshot.languageId}`,
+    `Cursor: line ${snapshot.cursorLine}, character ${snapshot.cursorCharacter}`,
+    `Current line: ${snapshot.currentLine}`,
+    `Current line before cursor: ${snapshot.linePrefix}`,
     '',
-    'Code before cursor:',
+    'Nearby code with cursor marker:',
     `\`\`\`${snapshot.languageId}`,
     snapshot.prefix,
     '<CURSOR>',
-    '```',
-    '',
-    'Code after cursor:',
-    `\`\`\`${snapshot.languageId}`,
     snapshot.suffix,
     '```',
   ].join('\n');
 }
 
-function sanitizeCompletion(value: string): string | undefined {
-  let result = value.replace(/\r\n/g, '\n').trim();
+function sanitizeCompletion(
+  value: string,
+  snapshot: CompletionSnapshot,
+): string | undefined {
+  let result = value.replace(/\r\n/g, '\n').replace(/^\uFEFF/, '');
 
-  const fenced = result.match(/^```(?:[\w-]+)?\n([\s\S]*?)\n```$/);
+  const fenced = result.trim().match(/^```(?:[\w-]+)?\n([\s\S]*?)\n```$/);
   if (fenced) {
     result = fenced[1];
   }
 
   result = result
-    .replace(/^Here is (the )?(completion|code):\s*/i, '')
-    .replace(/^Completion:\s*/i, '');
+    .replace(/^\s*Here is (the )?(completion|code):\s*/i, '')
+    .replace(/^\s*Completion:\s*/i, '')
+    .replace(/^\s*Insert:\s*/i, '')
+    .replace(/^\s*<CURSOR>/i, '');
+
+  result = result.replace(/^\n+/, '').replace(/\n+$/, '');
+  result = removePrefixOverlap(snapshot.prefix, result);
+  result = removeSuffixOverlap(result, snapshot.suffix);
 
   if (/^(no completion|none|n\/a)$/i.test(result.trim())) {
     return undefined;
@@ -117,5 +188,39 @@ function sanitizeCompletion(value: string): string | undefined {
     result = result.slice(0, 4000);
   }
 
-  return result.length > 0 ? result : undefined;
+  return result.trim().length > 0 ? result : undefined;
+}
+
+function removePrefixOverlap(prefix: string, completion: string): string {
+  const max = Math.min(prefix.length, completion.length, 2000);
+  for (let length = max; length > 0; length -= 1) {
+    if (prefix.endsWith(completion.slice(0, length))) {
+      return completion.slice(length);
+    }
+  }
+  return completion;
+}
+
+function removeSuffixOverlap(completion: string, suffix: string): string {
+  const max = Math.min(completion.length, suffix.length, 1000);
+  for (let length = max; length > 0; length -= 1) {
+    if (completion.endsWith(suffix.slice(0, length))) {
+      return completion.slice(0, -length);
+    }
+  }
+  return completion;
+}
+
+function trimStartByChars(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return value.slice(value.length - maxChars);
+}
+
+function trimEndByChars(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value;
+  }
+  return value.slice(0, maxChars);
 }

@@ -2,9 +2,14 @@
   "name": "helion-coder-vscode",
   "displayName": "HelionCoder",
   "description": "HelionCoder 本地 CLI 的 VS Code 集成，包含助手面板和行内补全。",
-  "version": "0.1.0",
-  "publisher": "local",
-  "license": "UNLICENSED",
+  "version": "0.0.4",
+  "publisher": "GabrielPondC",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gabrielpondc/HelionCoder.git",
+    "directory": "vscode-extension"
+  },
   "icon": "media/icon.png",
   "engines": {
     "vscode": "^1.90.0"
@@ -28,9 +33,10 @@
   ],
   "main": "./out/extension.js",
   "scripts": {
+    "sync-version": "node ../scripts/sync-vscode-version.js",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "npm run compile && npx @vscode/vsce package",
+    "package": "npm run sync-version && npm run compile && npx @vscode/vsce package",
     "check": "tsc --noEmit -p ./"
   },
   "contributes": {
@@ -91,8 +97,7 @@
         "helionCoder.defaultArgs": {
           "type": "array",
           "default": [
-            "--bare",
-            "--no-session-persistence"
+            "--bare"
           ],
           "items": {
             "type": "string"
@@ -115,6 +120,29 @@
           ],
           "default": "",
           "description": "通过 --effort 传给 helion-coder 的推理强度。留空使用自动/默认强度。"
+        },
+        "helionCoder.permissionMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "acceptEdits",
+            "bypassPermissions",
+            "dontAsk",
+            "plan"
+          ],
+          "default": "default",
+          "description": "通过 --permission-mode 传给 helion-coder 的权限模式。"
+        },
+        "helionCoder.thinking": {
+          "type": "string",
+          "enum": [
+            "",
+            "enabled",
+            "adaptive",
+            "disabled"
+          ],
+          "default": "",
+          "description": "通过 --thinking 传给 helion-coder 的思考模式。留空使用 CLI 默认。"
         },
         "helionCoder.models": {
           "type": "array",
@@ -171,6 +199,11 @@
           "type": "boolean",
           "default": true,
           "description": "从助手面板提问时，包含活动编辑器路径、选中文本和附近代码。"
+        },
+        "helionCoder.webview.planMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "从助手面板提问时默认进入计划模式，仅生成计划，不直接修改文件。"
         }
       }
     },
@@ -192,6 +225,13 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "editor.action.inlineSuggest.commit",
+        "key": "tab",
+        "when": "inlineSuggestionVisible && !editorReadonly && !editorTabMovesFocus"
+      }
+    ],
     "menus": {
       "editor/title": [
         {

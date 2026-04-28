@@ -15,9 +15,17 @@ export function activate(context: vscode.ExtensionContext): void {
     output,
     modelResolver,
   );
+  const inlineCompletionProvider = new HelionInlineCompletionProvider(cli);
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 91);
+  status.name = 'HelionCoder';
+  status.text = '$(sparkle) Helion';
+  status.tooltip = '打开 HelionCoder 面板';
+  status.command = 'helionCoder.openPanel';
+  status.show();
 
   context.subscriptions.push(
     output,
+    status,
     vscode.window.registerWebviewViewProvider(
       HelionAssistantViewProvider.viewType,
       assistantView,
@@ -29,8 +37,9 @@ export function activate(context: vscode.ExtensionContext): void {
     ),
     vscode.languages.registerInlineCompletionItemProvider(
       { pattern: '**' },
-      new HelionInlineCompletionProvider(cli),
+      inlineCompletionProvider,
     ),
+    inlineCompletionProvider,
     vscode.commands.registerCommand('helionCoder.openPanel', () => {
       assistantView.reveal();
     }),
@@ -66,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const model = await modelResolver.pickModel();
       assistantView.refresh();
       if (model === undefined) {
-        void vscode.window.showInformationMessage('HelionCoder 模型已重置为 CLI 默认值。');
+        void vscode.window.showInformationMessage('HelionCoder 模型已重置为命令行默认值。');
       } else {
         void vscode.window.showInformationMessage(`HelionCoder 模型已设置为 ${model}。`);
       }

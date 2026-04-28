@@ -1,0 +1,43 @@
+HelionCoder VS Code Extension License
+
+Copyright (c) 2026 Gabriel Pond
+
+This VS Code extension is licensed under the Apache License, Version 2.0,
+with the additional non-commercial restriction below.
+
+1. Non-commercial use
+
+You may use, copy, modify, and distribute this VS Code extension for personal,
+educational, research, evaluation, and other non-commercial purposes under the
+terms of the Apache License, Version 2.0.
+
+2. Commercial use requires authorization
+
+Any commercial use requires prior written authorization from the copyright
+holder. Commercial use includes, but is not limited to:
+
+- selling, sublicensing, or charging for access to this extension;
+- bundling this extension into a paid product, service, platform, or hosted
+  offering;
+- using this extension to provide paid consulting, managed services, SaaS,
+  enterprise tooling, or other revenue-generating services;
+- distributing modified or unmodified copies as part of a commercial package.
+
+3. Apache License terms
+
+Except for the commercial-use restriction above, the terms of the Apache
+License, Version 2.0 apply. If there is a conflict between the Apache License,
+Version 2.0 and the commercial-use restriction above, the commercial-use
+restriction controls.
+
+4. No trademark grant
+
+This license does not grant permission to use the HelionCoder name, logos,
+marks, or branding except as necessary to describe this extension.
+
+5. Disclaimer
+
+This extension is provided on an "AS IS" basis, without warranties or
+conditions of any kind, either express or implied.
+
+Commercial licensing contact: Gabriel Pond

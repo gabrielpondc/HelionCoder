@@ -14,6 +14,7 @@ import { TokenAuthAdapter } from "./auth/token-auth.js";
 import { OAuthAdapter } from "./auth/oauth-auth.js";
 import { ApiKeyAdapter } from "./auth/apikey-auth.js";
 import type { AuthAdapter, AuthUser } from "./auth/adapter.js";
+import { maybeUpdateBackendBinary } from "./release-updater.js";
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -25,7 +26,7 @@ const MAX_SESSIONS_PER_HOUR = parseInt(process.env.MAX_SESSIONS_PER_HOUR ?? "10"
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS?.split(",") ?? [];
 const GRACE_PERIOD_MS = parseInt(process.env.SESSION_GRACE_MS ?? String(5 * 60_000), 10);
 const SCROLLBACK_BYTES = parseInt(process.env.SCROLLBACK_BYTES ?? String(100 * 1024), 10);
-const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
+let claudeBin = process.env.CLAUDE_BIN ?? "claude";
 const AUTH_PROVIDER = process.env.AUTH_PROVIDER ?? "token";
 const SESSION_SECRET = process.env.SESSION_SECRET ?? crypto.randomUUID();
 const USER_HOME_BASE = process.env.USER_HOME_BASE ?? "/home/claude/users";
@@ -80,7 +81,7 @@ const sessionManager = new SessionManager(
   (cols, rows, user?: AuthUser) => {
     const userId = user?.id ?? "default";
     const home = userHomeDir(userId);
-    return spawn(CLAUDE_BIN, [], {
+    return spawn(claudeBin, [], {
       name: "xterm-256color",
       cols,
       rows,
@@ -308,19 +309,29 @@ process.on("SIGINT", shutdown);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-server.listen(PORT, HOST, () => {
-  console.log(`PTY server listening on http://${HOST}:${PORT}`);
-  console.log(`  WebSocket: ws://${HOST}:${PORT}/ws`);
-  console.log(`  Max sessions: ${MAX_SESSIONS} (${MAX_SESSIONS_PER_USER} per user)`);
-  console.log(`  Session grace period: ${GRACE_PERIOD_MS / 1000}s`);
-  console.log(`  Scrollback buffer: ${Math.round(SCROLLBACK_BYTES / 1024)}KB per session`);
-  console.log(`  Auth provider: ${AUTH_PROVIDER}`);
-  if (AUTH_PROVIDER === "token" && process.env.AUTH_TOKEN) {
-    console.log("  Auth: token required");
-  }
-  if (process.env.ADMIN_USERS) {
-    console.log(`  Admins: ${process.env.ADMIN_USERS}`);
-  }
-});
+async function start() {
+  claudeBin = await maybeUpdateBackendBinary({
+    binaryPath: claudeBin,
+    cwd: process.cwd(),
+  });
+
+  server.listen(PORT, HOST, () => {
+    console.log(`PTY server listening on http://${HOST}:${PORT}`);
+    console.log(`  WebSocket: ws://${HOST}:${PORT}/ws`);
+    console.log(`  Binary: ${claudeBin}`);
+    console.log(`  Max sessions: ${MAX_SESSIONS} (${MAX_SESSIONS_PER_USER} per user)`);
+    console.log(`  Session grace period: ${GRACE_PERIOD_MS / 1000}s`);
+    console.log(`  Scrollback buffer: ${Math.round(SCROLLBACK_BYTES / 1024)}KB per session`);
+    console.log(`  Auth provider: ${AUTH_PROVIDER}`);
+    if (AUTH_PROVIDER === "token" && process.env.AUTH_TOKEN) {
+      console.log("  Auth: token required");
+    }
+    if (process.env.ADMIN_USERS) {
+      console.log(`  Admins: ${process.env.ADMIN_USERS}`);
+    }
+  });
+}
+
+void start();
 
 export { app, server, sessionManager, wss };

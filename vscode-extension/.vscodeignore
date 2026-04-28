@@ -4,3 +4,5 @@ src/
 tsconfig.json
 out/**/*.map
 package-lock.json
+.helioncoder/
+.DS_Store

@@ -4,6 +4,7 @@
  */
 
 import { getDefaultSubagentModel } from '../../utils/model/agent.js'
+import { getMainLoopModel, renderModelName } from '../../utils/model/model.js'
 import {
   getSourceDisplayName,
   type SettingSource,
@@ -80,7 +81,7 @@ export function resolveAgentModelDisplay(
 ): string | undefined {
   const model = agent.model || getDefaultSubagentModel()
   if (!model) return undefined
-  return model === 'inherit' ? 'inherit' : model
+  return model === 'inherit' ? renderModelName(getMainLoopModel()) : model
 }
 
 /**
@@ -102,4 +103,3 @@ export function compareAgentsByName(
     sensitivity: 'base',
   })
 }
-

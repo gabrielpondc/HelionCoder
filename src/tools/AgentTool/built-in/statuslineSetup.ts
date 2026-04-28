@@ -138,8 +138,8 @@ export const STATUSLINE_SETUP_AGENT: BuiltInAgentDefinition = {
   tools: ['Read', 'Edit'],
   source: 'built-in',
   baseDir: 'built-in',
-  model: 'sonnet',
+  // Inherit the user's selected model; OpenAI-compatible deployments may not
+  // provide Claude family aliases like "sonnet".
   color: 'orange',
   getSystemPrompt: () => STATUSLINE_SYSTEM_PROMPT,
 }
-

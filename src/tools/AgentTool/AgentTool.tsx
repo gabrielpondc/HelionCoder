@@ -427,8 +427,15 @@ export const AgentTool = buildTool({
       is_fork: isForkPath
     });
 
-    // Resolve effective isolation mode (explicit param overrides agent def)
-    const effectiveIsolation = isolation ?? selectedAgent.isolation;
+    // Resolve effective isolation mode (explicit param overrides agent def).
+    // statusline-setup edits user-level config, so worktree isolation is both
+    // unnecessary and harmful in non-git directories if the model adds it.
+    const requestedIsolation = isolation ?? selectedAgent.isolation;
+    const effectiveIsolation =
+      selectedAgent.agentType === 'statusline-setup' &&
+      requestedIsolation === 'worktree'
+        ? undefined
+        : requestedIsolation;
 
     // Remote isolation: delegate to CCR. Gated ant-only — the guard enables
     // dead code elimination of the entire block for external builds.

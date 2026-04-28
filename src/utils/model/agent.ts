@@ -4,13 +4,16 @@ import { MODEL_ALIASES, type ModelAlias } from './aliases.js'
 import { applyBedrockRegionPrefix, getBedrockRegionPrefix } from './bedrock.js'
 import {
   getCanonicalName,
+  getMainLoopModel,
   getRuntimeMainLoopModel,
   parseUserSpecifiedModel,
+  renderModelName,
 } from './model.js'
 import { getAPIProvider } from './providers.js'
 
 export const AGENT_MODEL_OPTIONS = [...MODEL_ALIASES, 'inherit'] as const
 export type AgentModelAlias = (typeof AGENT_MODEL_OPTIONS)[number]
+ 
 
 export type AgentModelOption = {
   value: AgentModelAlias
@@ -122,9 +125,8 @@ function aliasMatchesParentTier(alias: string, parentModel: string): boolean {
 }
 
 export function getAgentModelDisplay(model: string | undefined): string {
-  // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime
-  if (!model) return 'Inherit from parent (default)'
-  if (model === 'inherit') return 'Inherit from parent'
+  // When model is omitted, getDefaultSubagentModel() returns 'inherit' at runtime.
+  if (!model || model === 'inherit') return renderModelName(getMainLoopModel())
   return capitalize(model)
 }
 
@@ -150,9 +152,8 @@ export function getAgentModelOptions(): AgentModelOption[] {
     },
     {
       value: 'inherit',
-      label: 'Inherit from parent',
+      label: 'Current selected model',
       description: 'Use the same model as the main conversation',
     },
   ]
 }
-

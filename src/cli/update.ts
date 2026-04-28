@@ -14,6 +14,7 @@ import {
 import { logForDebugging } from 'src/utils/debug.js'
 import { getDoctorDiagnostic } from 'src/utils/doctorDiagnostic.js'
 import { gracefulShutdown } from 'src/utils/gracefulShutdown.js'
+import { maybeUpdateCurrentCliFromRelease } from 'src/utils/helionReleaseUpdater.js'
 import {
   installOrUpdateClaudePackage,
   localInstallationExists,
@@ -36,6 +37,21 @@ export async function update() {
   writeToStdout(`正在检查 ${channel} 渠道更新...\n`)
 
   logForDebugging('update: Starting update check')
+
+  const releaseUpdate = await maybeUpdateCurrentCliFromRelease({
+    cwd: process.cwd(),
+    currentVersion: MACRO.VERSION,
+    logger: {
+      info: message => writeToStdout(`${message}\n`),
+      warn: message => process.stderr.write(`${message}\n`),
+    },
+  })
+  if (releaseUpdate.status === 'updated' || releaseUpdate.status === 'current') {
+    await gracefulShutdown(0)
+  }
+  if (releaseUpdate.status === 'failed') {
+    writeToStdout('GitHub Releases 检查失败，尝试旧更新通道...\n')
+  }
 
   // Run diagnostic to detect potential issues
   logForDebugging('update: Running diagnostic')
