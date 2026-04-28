@@ -44,14 +44,13 @@ function main() {
 
   // Generate a publishable package.json
   const npmPkg = {
-    name: srcPkg.name || 'helioncoder',
+    name: srcPkg.name || 'helion-coder',
     version: srcPkg.version || '0.0.0',
     description: srcPkg.description || 'HelionCoder CLI powered by OpenAI-compatible APIs.',
     license: 'MIT',
     type: 'module',
     main: './cli.mjs',
     bin: {
-      helioncoder: './cli.mjs',
       'helion-coder': './cli.mjs',
     },
     engines: {
@@ -83,7 +82,7 @@ function main() {
   console.log('npm package generated in dist/npm/')
   console.log(`  package:  ${npmPkg.name}@${npmPkg.version}`)
   console.log(`  bundle:   cli.mjs (${sizeMB} MB)`)
-  console.log('  bin:      helioncoder, helion-coder -> ./cli.mjs')
+  console.log('  bin:      helion-coder -> ./cli.mjs')
   console.log('')
   console.log('To publish:')
   console.log('  cd dist/npm && npm publish')

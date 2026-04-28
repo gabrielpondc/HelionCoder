@@ -1,8 +1,8 @@
-import { spawn } from 'child_process';
-import * as fs from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import * as vscode from 'vscode';
+import { spawn } from "child_process";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import * as vscode from "vscode";
 
 export interface RunPromptController {
   sendSideQuestion(question: string): string | undefined;
@@ -34,6 +34,7 @@ export interface RunPromptOptions {
   onPermissionCancel?: (requestId: string) => void;
   onUsage?: (usage: TokenUsage) => void;
   onToolStep?: (event: ToolStepEvent) => void;
+  onThinking?: (chunk: string) => void;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
 }
@@ -56,18 +57,18 @@ export interface PermissionRequest {
 
 export type PermissionResponseInput =
   | {
-      behavior: 'allow';
+      behavior: "allow";
       updatedInput: Record<string, unknown>;
       updatedPermissions?: unknown[];
       toolUseID?: string;
-      decisionClassification?: 'user_temporary' | 'user_permanent';
+      decisionClassification?: "user_temporary" | "user_permanent";
     }
   | {
-      behavior: 'deny';
+      behavior: "deny";
       message: string;
       interrupt?: boolean;
       toolUseID?: string;
-      decisionClassification?: 'user_reject';
+      decisionClassification?: "user_reject";
     };
 
 export interface RunPromptResult {
@@ -87,7 +88,12 @@ export interface TokenUsage {
   totalCostUsd?: number;
 }
 
-export type ToolStepStatus = 'started' | 'running' | 'completed' | 'failed' | 'status';
+export type ToolStepStatus =
+  | "started"
+  | "running"
+  | "completed"
+  | "failed"
+  | "status";
 
 export interface ToolStepEvent {
   id: string;
@@ -114,93 +120,103 @@ export class HelionCli {
 
   async resolve(): Promise<ResolvedCli> {
     const configured = vscode.workspace
-      .getConfiguration('helionCoder')
-      .get<string>('executablePath', '')
+      .getConfiguration("helionCoder")
+      .get<string>("executablePath", "")
       .trim();
 
     if (configured.length > 0) {
-      return this.toResolvedCli(configured, '已配置的可执行文件');
+      return this.toResolvedCli(configured, "已配置的可执行文件");
     }
 
     const roots = this.getCandidateRoots();
-    const executableName = process.platform === 'win32' ? 'helion-coder.exe' : 'helion-coder';
+    const executableName =
+      process.platform === "win32" ? "helion-coder.exe" : "helion-coder";
 
     for (const root of roots) {
-      const nativeCandidate = path.join(root, 'dist', executableName);
+      const nativeCandidate = path.join(root, "dist", executableName);
       if (this.isFile(nativeCandidate)) {
-        return this.toResolvedCli(nativeCandidate, '工作区 dist 可执行文件');
+        return this.toResolvedCli(nativeCandidate, "工作区 dist 可执行文件");
       }
 
-      const moduleCandidate = path.join(root, 'dist', 'cli.mjs');
+      const moduleCandidate = path.join(root, "dist", "cli.mjs");
       if (this.isFile(moduleCandidate)) {
-        return this.toResolvedCli(moduleCandidate, '工作区 dist 模块');
+        return this.toResolvedCli(moduleCandidate, "工作区 dist 模块");
       }
 
-      const packagedNative = path.join(root, 'bin', executableName);
+      const packagedNative = path.join(root, "bin", executableName);
       if (this.isFile(packagedNative)) {
-        return this.toResolvedCli(packagedNative, '已打包可执行文件');
+        return this.toResolvedCli(packagedNative, "已打包可执行文件");
       }
 
-      const packagedModule = path.join(root, 'bin', 'cli.mjs');
+      const packagedModule = path.join(root, "bin", "cli.mjs");
       if (this.isFile(packagedModule)) {
-        return this.toResolvedCli(packagedModule, '已打包模块');
+        return this.toResolvedCli(packagedModule, "已打包模块");
       }
     }
 
-    const fromPath = this.findOnPath(executableName) ?? this.findOnPath('helion-coder');
+    const fromPath =
+      this.findOnPath(executableName) ?? this.findOnPath("helion-coder");
     if (fromPath) {
-      return this.toResolvedCli(fromPath, 'PATH 中的可执行文件');
+      return this.toResolvedCli(fromPath, "PATH 中的可执行文件");
     }
 
     return {
-      command: 'helion-coder',
+      command: "helion-coder",
       argsPrefix: [],
-      label: 'PATH 中的 helion-coder',
+      label: "PATH 中的 helion-coder",
     };
   }
 
-  async runPrompt(prompt: string, options: RunPromptOptions = {}): Promise<RunPromptResult> {
+  async runPrompt(
+    prompt: string,
+    options: RunPromptOptions = {},
+  ): Promise<RunPromptResult> {
     const resolved = await this.resolve();
-    const config = vscode.workspace.getConfiguration('helionCoder');
-    const defaultArgs = config.get<string[]>('defaultArgs', ['--bare']);
-    const selectedModel = config.get<string>('model', '').trim();
-    const selectedEffort = config.get<string>('effort', '').trim();
+    const config = vscode.workspace.getConfiguration("helionCoder");
+    const defaultArgs = config.get<string[]>("defaultArgs", ["--bare"]);
+    const selectedModel = config.get<string>("model", "").trim();
+    const selectedEffort = config.get<string>("effort", "").trim();
     const selectedPermissionMode =
-      options.permissionMode ?? config.get<string>('permissionMode', '').trim();
+      options.permissionMode ?? config.get<string>("permissionMode", "").trim();
     const selectedThinkingMode =
-      options.thinkingMode ?? config.get<string>('thinking', '').trim();
+      options.thinkingMode ?? config.get<string>("thinking", "").trim();
     const modelArgs =
       selectedModel && !argsContainModel(defaultArgs)
-        ? ['--model', selectedModel]
+        ? ["--model", selectedModel]
         : [];
     const effortArgs =
       selectedEffort && !argsContainEffort(defaultArgs)
-        ? ['--effort', selectedEffort]
+        ? ["--effort", selectedEffort]
         : [];
     const permissionArgs =
       selectedPermissionMode && !argsContainPermissionMode(defaultArgs)
-        ? ['--permission-mode', selectedPermissionMode]
+        ? ["--permission-mode", selectedPermissionMode]
         : [];
     const thinkingArgs =
       selectedThinkingMode && !argsContainThinking(defaultArgs)
-        ? ['--thinking', selectedThinkingMode]
+        ? ["--thinking", selectedThinkingMode]
         : [];
     const planArgs =
-      options.planMode && !argsContainPlanMode(defaultArgs) ? ['--plan-mode-required'] : [];
-    const addDirArgs = uniquePaths(options.addDirs ?? []).flatMap(dir => ['--add-dir', dir]);
+      options.planMode && !argsContainPlanMode(defaultArgs)
+        ? ["--plan-mode-required"]
+        : [];
+    const addDirArgs = uniquePaths(options.addDirs ?? []).flatMap((dir) => [
+      "--add-dir",
+      dir,
+    ]);
     const outputArgs = options.streamJson
       ? [
-          '-p',
-          '--input-format',
-          'stream-json',
-          '--output-format',
-          'stream-json',
-          '--verbose',
-          '--include-partial-messages',
-          '--permission-prompt-tool',
-          'stdio',
+          "-p",
+          "--input-format",
+          "stream-json",
+          "--output-format",
+          "stream-json",
+          "--verbose",
+          "--include-partial-messages",
+          "--permission-prompt-tool",
+          "stdio",
         ]
-      : ['-p', '--output-format', 'text', prompt];
+      : ["-p", "--output-format", "text", prompt];
     const args = [
       ...resolved.argsPrefix,
       ...defaultArgs,
@@ -214,17 +230,19 @@ export class HelionCli {
     ];
     const cwd = options.cwd ?? getWorkspaceCwd();
 
-    this.output.appendLine(`$ ${quoteArg(resolved.command)} ${args.map(quoteArg).join(' ')}`);
+    this.output.appendLine(
+      `$ ${quoteArg(resolved.command)} ${args.map(quoteArg).join(" ")}`,
+    );
     this.output.appendLine(`工作目录：${cwd}`);
 
     return await new Promise((resolve, reject) => {
-      let stdout = '';
-      let rawStdout = '';
-      let stderr = '';
-      let streamBuffer = '';
-      let streamText = '';
-      let streamResult = '';
-      let streamError = '';
+      let stdout = "";
+      let rawStdout = "";
+      let stderr = "";
+      let streamBuffer = "";
+      let streamText = "";
+      let streamResult = "";
+      let streamError = "";
       let streamDone = false;
       let streamSessionId: string | undefined;
       let streamUsage: TokenUsage | undefined;
@@ -237,6 +255,9 @@ export class HelionCli {
         if (parsed.text) {
           streamText += parsed.text;
           options.onStdout?.(parsed.text);
+        }
+        if (parsed.thinking) {
+          options.onThinking?.(parsed.thinking);
         }
         if (parsed.finalText !== undefined) {
           streamResult = parsed.finalText;
@@ -254,7 +275,10 @@ export class HelionCli {
         for (const step of parsed.toolSteps ?? []) {
           options.onToolStep?.(step);
         }
-        if (parsed.sideQuestion && sideQuestionRequests.has(parsed.sideQuestion.requestId)) {
+        if (
+          parsed.sideQuestion &&
+          sideQuestionRequests.has(parsed.sideQuestion.requestId)
+        ) {
           sideQuestionRequests.delete(parsed.sideQuestion.requestId);
           options.onSideQuestion?.(parsed.sideQuestion);
         }
@@ -274,29 +298,34 @@ export class HelionCli {
         cwd,
         env: {
           ...process.env,
-          CLAUDE_CODE_ENTRYPOINT: 'claude-vscode',
-          FORCE_COLOR: '0',
-          NO_COLOR: '1',
-          TERM: process.env.TERM ?? 'xterm-256color',
+          CLAUDE_CODE_ENTRYPOINT: "claude-vscode",
+          FORCE_COLOR: "0",
+          NO_COLOR: "1",
+          TERM: process.env.TERM ?? "xterm-256color",
         },
         shell: false,
-        stdio: [options.streamJson ? 'pipe' : 'ignore', 'pipe', 'pipe'],
+        stdio: [options.streamJson ? "pipe" : "ignore", "pipe", "pipe"],
       });
 
       if (options.streamJson && child.stdin) {
         options.onController?.({
           sendSideQuestion: (question: string) => {
-            if (!child.stdin || child.stdin.destroyed || child.killed || streamDone) {
+            if (
+              !child.stdin ||
+              child.stdin.destroyed ||
+              child.killed ||
+              streamDone
+            ) {
               return undefined;
             }
             const requestId = randomId();
             sideQuestionRequests.add(requestId);
             child.stdin.write(
               `${JSON.stringify({
-                type: 'control_request',
+                type: "control_request",
                 request_id: requestId,
                 request: {
-                  subtype: 'side_question',
+                  subtype: "side_question",
                   question,
                 },
               })}\n`,
@@ -304,14 +333,19 @@ export class HelionCli {
             return requestId;
           },
           sendPermissionResponse: (requestId, response) => {
-            if (!child.stdin || child.stdin.destroyed || child.killed || streamDone) {
+            if (
+              !child.stdin ||
+              child.stdin.destroyed ||
+              child.killed ||
+              streamDone
+            ) {
               return false;
             }
             child.stdin.write(
               `${JSON.stringify({
-                type: 'control_response',
+                type: "control_response",
                 response: {
-                  subtype: 'success',
+                  subtype: "success",
                   request_id: requestId,
                   response,
                 },
@@ -323,10 +357,10 @@ export class HelionCli {
 
         child.stdin.write(
           `${JSON.stringify({
-            type: 'user',
-            session_id: options.sessionId ?? '',
+            type: "user",
+            session_id: options.sessionId ?? "",
             message: {
-              role: 'user',
+              role: "user",
               content: prompt,
             },
             parent_tool_use_id: null,
@@ -338,7 +372,7 @@ export class HelionCli {
         if (settled) {
           return;
         }
-        child.kill('SIGTERM');
+        child.kill("SIGTERM");
       };
 
       if (options.cancellation) {
@@ -352,14 +386,14 @@ export class HelionCli {
         }, options.timeoutMs);
       }
 
-      child.stdout?.on('data', data => {
+      child.stdout?.on("data", (data) => {
         const chunk = stripAnsi(String(data));
         rawStdout += chunk;
         this.output.append(chunk);
         if (options.streamJson) {
           streamBuffer += chunk;
           const lines = streamBuffer.split(/\r?\n/);
-          streamBuffer = lines.pop() ?? '';
+          streamBuffer = lines.pop() ?? "";
           for (const line of lines) {
             const parsed = parseStreamJsonLine(line);
             handleParsed(parsed);
@@ -371,14 +405,14 @@ export class HelionCli {
         }
       });
 
-      child.stderr?.on('data', data => {
+      child.stderr?.on("data", (data) => {
         const chunk = stripAnsi(String(data));
         stderr += chunk;
         this.output.append(chunk);
         options.onStderr?.(chunk);
       });
 
-      child.on('error', error => {
+      child.on("error", (error) => {
         settled = true;
         if (timeout) {
           clearTimeout(timeout);
@@ -390,7 +424,7 @@ export class HelionCli {
         );
       });
 
-      child.on('close', code => {
+      child.on("close", (code) => {
         settled = true;
         if (timeout) {
           clearTimeout(timeout);
@@ -411,12 +445,16 @@ export class HelionCli {
         }
 
         if (options.cancellation?.isCancellationRequested) {
-          reject(new Error('HelionCoder 请求已取消。'));
+          reject(new Error("HelionCoder 请求已取消。"));
           return;
         }
 
         if (code !== 0) {
-          const details = stderr.trim() || stdout.trim() || rawStdout.trim() || `退出码 ${code}`;
+          const details =
+            stderr.trim() ||
+            stdout.trim() ||
+            rawStdout.trim() ||
+            `退出码 ${code}`;
           reject(new Error(`HelionCoder 运行失败：${details}`));
           return;
         }
@@ -434,7 +472,7 @@ export class HelionCli {
 
   private toResolvedCli(candidate: string, label: string): ResolvedCli {
     const expanded = expandHome(normalizeConfiguredExecutable(candidate));
-    if (expanded.endsWith('.mjs')) {
+    if (expanded.endsWith(".mjs")) {
       return {
         command: process.execPath,
         argsPrefix: [expanded],
@@ -456,8 +494,8 @@ export class HelionCli {
       roots.add(folder.uri.fsPath);
     }
 
-    roots.add(path.resolve(this.context.extensionPath, '..'));
-    roots.add(path.resolve(this.context.extensionPath, '..', '..'));
+    roots.add(path.resolve(this.context.extensionPath, ".."));
+    roots.add(path.resolve(this.context.extensionPath, "..", ".."));
     roots.add(this.context.extensionPath);
 
     return [...roots];
@@ -478,13 +516,16 @@ export class HelionCli {
     }
 
     const pathExts =
-      process.platform === 'win32'
-        ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';')
-        : [''];
+      process.platform === "win32"
+        ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
+        : [""];
 
     for (const dir of pathValue.split(path.delimiter)) {
       for (const ext of pathExts) {
-        const candidate = path.join(dir, command.endsWith(ext) ? command : `${command}${ext}`);
+        const candidate = path.join(
+          dir,
+          command.endsWith(ext) ? command : `${command}${ext}`,
+        );
         if (this.isFile(candidate)) {
           return candidate;
         }
@@ -500,11 +541,11 @@ export function getWorkspaceCwd(): string {
 }
 
 export function stripAnsi(value: string): string {
-  return value.replace(ANSI_PATTERN, '');
+  return value.replace(ANSI_PATTERN, "");
 }
 
 function expandHome(value: string): string {
-  if (value === '~') {
+  if (value === "~") {
     return os.homedir();
   }
   if (value.startsWith(`~${path.sep}`)) {
@@ -522,8 +563,8 @@ function normalizeConfiguredExecutable(value: string): string {
     normalized = normalized.slice(1, -1);
   }
 
-  if (process.platform !== 'win32') {
-    normalized = normalized.replace(/\\([\\ "'`$&(){}[\];<>|?*!])/g, '$1');
+  if (process.platform !== "win32") {
+    normalized = normalized.replace(/\\([\\ "'`$&(){}[\];<>|?*!])/g, "$1");
   }
 
   return normalized;
@@ -533,27 +574,34 @@ function quoteArg(value: string): string {
   if (/^[\w./:=@-]+$/.test(value)) {
     return value;
   }
-  return JSON.stringify(value.length > 180 ? `${value.slice(0, 180)}...` : value);
+  return JSON.stringify(
+    value.length > 180 ? `${value.slice(0, 180)}...` : value,
+  );
 }
 
 function argsContainModel(args: string[]): boolean {
-  return args.some(arg => arg === '--model' || arg.startsWith('--model='));
+  return args.some((arg) => arg === "--model" || arg.startsWith("--model="));
 }
 
 function argsContainEffort(args: string[]): boolean {
-  return args.some(arg => arg === '--effort' || arg.startsWith('--effort='));
+  return args.some((arg) => arg === "--effort" || arg.startsWith("--effort="));
 }
 
 function argsContainPermissionMode(args: string[]): boolean {
-  return args.some(arg => arg === '--permission-mode' || arg.startsWith('--permission-mode='));
+  return args.some(
+    (arg) =>
+      arg === "--permission-mode" || arg.startsWith("--permission-mode="),
+  );
 }
 
 function argsContainThinking(args: string[]): boolean {
-  return args.some(arg => arg === '--thinking' || arg.startsWith('--thinking='));
+  return args.some(
+    (arg) => arg === "--thinking" || arg.startsWith("--thinking="),
+  );
 }
 
 function argsContainPlanMode(args: string[]): boolean {
-  return args.some(arg => arg === '--plan-mode-required');
+  return args.some((arg) => arg === "--plan-mode-required");
 }
 
 function uniquePaths(paths: string[]): string[] {
@@ -572,6 +620,7 @@ function uniquePaths(paths: string[]): string[] {
 
 interface StreamJsonParseResult {
   text?: string;
+  thinking?: string;
   finalText?: string;
   errorText?: string;
   done?: boolean;
@@ -603,49 +652,66 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
   }
 
   const type = asString(object.type);
-  if (type === 'stream_event') {
+  if (type === "stream_event") {
     const event = asRecord(object.event);
-    const usage = parseTokenUsage(event?.usage, undefined, asRecord(event?.message)?.usage);
+    const usage = parseTokenUsage(
+      event?.usage,
+      undefined,
+      asRecord(event?.message)?.usage,
+    );
     const delta = asRecord(event?.delta);
-    if (asString(event?.type) === 'content_block_start') {
-      const step = toolStepFromToolUseBlock(asRecord(event?.content_block), 'started');
+    if (asString(event?.type) === "content_block_start") {
+      const step = toolStepFromToolUseBlock(
+        asRecord(event?.content_block),
+        "started",
+      );
       return {
         ...(usage ? { usage } : {}),
         ...(step ? { toolSteps: [step] } : {}),
       };
     }
     if (
-      asString(event?.type) === 'content_block_delta' &&
-      asString(delta?.type) === 'text_delta'
+      asString(event?.type) === "content_block_delta" &&
+      asString(delta?.type) === "text_delta"
     ) {
-      return { text: asString(delta?.text) ?? '', usage };
+      return { text: asString(delta?.text) ?? "", usage };
+    }
+    if (
+      asString(event?.type) === "content_block_delta" &&
+      asString(delta?.type) === "thinking_delta"
+    ) {
+      return { thinking: asString(delta?.thinking) ?? "", usage };
     }
     return usage ? { usage } : {};
   }
 
-  if (type === 'streamlined_text') {
-    return { text: asString(object.text) ?? asString(object.delta) ?? '' };
+  if (type === "streamlined_text") {
+    return { text: asString(object.text) ?? asString(object.delta) ?? "" };
   }
 
-  if (type === 'assistant') {
+  if (type === "assistant") {
     const message = asRecord(object.message);
     const usage = parseTokenUsage(message?.usage);
-    const steps = toolStepsFromContent(message?.content, 'started');
+    const steps = toolStepsFromContent(message?.content, "started");
+    const thinking = thinkingFromContent(message?.content);
     return {
       ...(usage ? { usage } : {}),
       ...(steps.length > 0 ? { toolSteps: steps } : {}),
+      ...(thinking ? { thinking } : {}),
     };
   }
 
-  if (type === 'user') {
+  if (type === "user") {
     const message = asRecord(object.message);
     const steps = toolResultStepsFromContent(message?.content);
     return steps.length > 0 ? { toolSteps: steps } : {};
   }
 
-  if (type === 'tool_progress') {
-    const toolUseId = asString(object.tool_use_id) ?? asString(object.toolUseID);
-    const toolName = asString(object.tool_name) ?? asString(object.toolName) ?? 'Tool';
+  if (type === "tool_progress") {
+    const toolUseId =
+      asString(object.tool_use_id) ?? asString(object.toolUseID);
+    const toolName =
+      asString(object.tool_name) ?? asString(object.toolName) ?? "Tool";
     if (!toolUseId) {
       return {};
     }
@@ -654,7 +720,7 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
         {
           id: toolUseId,
           toolName,
-          status: 'running',
+          status: "running",
           label: toolName,
           detail: formatElapsed(asNumber(object.elapsed_time_seconds)),
           elapsedSeconds: asNumber(object.elapsed_time_seconds),
@@ -663,16 +729,16 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
     };
   }
 
-  if (type === 'streamlined_tool_use_summary') {
+  if (type === "streamlined_tool_use_summary") {
     const summary = asString(object.tool_summary);
     return summary
       ? {
           toolSteps: [
             {
               id: asString(object.uuid) ?? `summary-${summary}`,
-              toolName: 'Summary',
-              status: 'completed',
-              label: '工具汇总',
+              toolName: "Summary",
+              status: "completed",
+              label: "工具汇总",
               detail: summary,
             },
           ],
@@ -680,16 +746,16 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
       : {};
   }
 
-  if (type === 'tool_use_summary') {
+  if (type === "tool_use_summary") {
     const summary = asString(object.summary);
     return summary
       ? {
           toolSteps: [
             {
               id: asString(object.uuid) ?? `summary-${summary}`,
-              toolName: 'Summary',
-              status: 'completed',
-              label: '工具汇总',
+              toolName: "Summary",
+              status: "completed",
+              label: "工具汇总",
               detail: summary,
             },
           ],
@@ -697,50 +763,50 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
       : {};
   }
 
-  if (type === 'system' && asString(object.subtype) === 'status') {
+  if (type === "system" && asString(object.subtype) === "status") {
     const status = asString(object.status);
-    if (status === 'compacting') {
+    if (status === "compacting") {
       return {
         toolSteps: [
           {
-            id: asString(object.uuid) ?? 'status-compacting',
-            toolName: 'Status',
-            status: 'status',
-            label: '压缩上下文',
-            detail: '正在整理上下文窗口后继续',
+            id: asString(object.uuid) ?? "status-compacting",
+            toolName: "Status",
+            status: "status",
+            label: "压缩上下文",
+            detail: "正在整理上下文窗口后继续",
           },
         ],
       };
     }
   }
 
-  if (type === 'result') {
+  if (type === "result") {
     const errors = asStringArray(object.errors);
     const base = {
       sessionId: asString(object.session_id),
       usage: parseTokenUsage(object.usage, asNumber(object.total_cost_usd)),
     };
     if (errors.length > 0) {
-      return { ...base, errorText: errors.join('\n'), done: true };
+      return { ...base, errorText: errors.join("\n"), done: true };
     }
-    if (asString(object.subtype) === 'success') {
-      return { ...base, finalText: asString(object.result) ?? '', done: true };
+    if (asString(object.subtype) === "success") {
+      return { ...base, finalText: asString(object.result) ?? "", done: true };
     }
     return { ...base, done: true };
   }
 
-  if (type === 'control_response') {
+  if (type === "control_response") {
     const response = asRecord(object.response);
     const requestId = asString(response?.request_id);
     if (!requestId) {
       return {};
     }
 
-    if (asString(response?.subtype) === 'error') {
+    if (asString(response?.subtype) === "error") {
       return {
         sideQuestion: {
           requestId,
-          error: asString(response?.error) ?? '支线问题执行失败。',
+          error: asString(response?.error) ?? "支线问题执行失败。",
         },
       };
     }
@@ -749,24 +815,24 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
     return {
       sideQuestion: {
         requestId,
-        response: asString(payload?.response) ?? '',
+        response: asString(payload?.response) ?? "",
       },
     };
   }
 
-  if (type === 'control_request') {
+  if (type === "control_request") {
     const requestId = asString(object.request_id);
     const request = asRecord(object.request);
     if (!requestId || !request) {
       return {};
     }
-    if (asString(request.subtype) === 'can_use_tool') {
+    if (asString(request.subtype) === "can_use_tool") {
       return {
         permissionRequest: {
           requestId,
-          toolName: asString(request.tool_name) ?? 'Tool',
+          toolName: asString(request.tool_name) ?? "Tool",
           input: asRecord(request.input) ?? {},
-          toolUseId: asString(request.tool_use_id) ?? '',
+          toolUseId: asString(request.tool_use_id) ?? "",
           description: asString(request.description),
           blockedPath: asString(request.blocked_path),
           permissionSuggestions: Array.isArray(request.permission_suggestions)
@@ -777,7 +843,7 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
     }
   }
 
-  if (type === 'control_cancel_request') {
+  if (type === "control_cancel_request") {
     const requestId = asString(object.request_id);
     return requestId ? { permissionCancelRequestId: requestId } : {};
   }
@@ -785,13 +851,32 @@ function parseStreamJsonMessage(message: unknown): StreamJsonParseResult {
   return {};
 }
 
-function toolStepsFromContent(content: unknown, status: ToolStepStatus): ToolStepEvent[] {
+function toolStepsFromContent(
+  content: unknown,
+  status: ToolStepStatus,
+): ToolStepEvent[] {
   if (!Array.isArray(content)) {
     return [];
   }
   return content
-    .map(block => toolStepFromToolUseBlock(asRecord(block), status))
+    .map((block) => toolStepFromToolUseBlock(asRecord(block), status))
     .filter((step): step is ToolStepEvent => Boolean(step));
+}
+
+function thinkingFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) {
+    return undefined;
+  }
+  const text = content
+    .map((block) => {
+      const record = asRecord(block);
+      return asString(record?.type) === "thinking"
+        ? (asString(record?.thinking) ?? "")
+        : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+  return text || undefined;
 }
 
 function toolResultStepsFromContent(content: unknown): ToolStepEvent[] {
@@ -802,7 +887,7 @@ function toolResultStepsFromContent(content: unknown): ToolStepEvent[] {
   const steps: ToolStepEvent[] = [];
   for (const block of content) {
     const record = asRecord(block);
-    if (!record || asString(record.type) !== 'tool_result') {
+    if (!record || asString(record.type) !== "tool_result") {
       continue;
     }
     const id = asString(record.tool_use_id);
@@ -811,9 +896,9 @@ function toolResultStepsFromContent(content: unknown): ToolStepEvent[] {
     }
     steps.push({
       id,
-      toolName: 'Tool',
-      status: record.is_error === true ? 'failed' : 'completed',
-      label: record.is_error === true ? '执行失败' : '执行完成',
+      toolName: "Tool",
+      status: record.is_error === true ? "failed" : "completed",
+      label: record.is_error === true ? "执行失败" : "执行完成",
       detail: summarizeToolResult(record.content),
     });
   }
@@ -824,7 +909,7 @@ function toolStepFromToolUseBlock(
   block: Record<string, unknown> | undefined,
   status: ToolStepStatus,
 ): ToolStepEvent | undefined {
-  if (!block || asString(block.type) !== 'tool_use') {
+  if (!block || asString(block.type) !== "tool_use") {
     return undefined;
   }
 
@@ -833,7 +918,7 @@ function toolStepFromToolUseBlock(
     return undefined;
   }
 
-  const toolName = asString(block.name) ?? 'Tool';
+  const toolName = asString(block.name) ?? "Tool";
   const input = asRecord(block.input) ?? {};
   const metadata = toolMetadata(toolName, input);
   return {
@@ -852,14 +937,21 @@ function toolStepFromToolUseBlock(
 function toolMetadata(
   toolName: string,
   input: Record<string, unknown>,
-): Pick<ToolStepEvent, 'label' | 'detail' | 'filePath' | 'lineStart' | 'lineEnd'> {
+): Pick<
+  ToolStepEvent,
+  "label" | "detail" | "filePath" | "lineStart" | "lineEnd"
+> {
   const filePath = firstString(input.file_path, input.filePath, input.path);
-  const absoluteFilePath = filePath ? normalizeToolFilePath(filePath) : undefined;
+  const absoluteFilePath = filePath
+    ? normalizeToolFilePath(filePath)
+    : undefined;
   const offset = firstNumber(input.offset, input.start_line, input.startLine);
   const limit = firstNumber(input.limit, input.line_count, input.lineCount);
   const lineStart = offset;
   const lineEnd =
-    offset !== undefined && limit !== undefined ? offset + Math.max(0, limit - 1) : undefined;
+    offset !== undefined && limit !== undefined
+      ? offset + Math.max(0, limit - 1)
+      : undefined;
 
   if (/^read$/i.test(toolName) && absoluteFilePath) {
     const readLineStart = lineStart ?? (limit !== undefined ? 1 : undefined);
@@ -868,7 +960,7 @@ function toolMetadata(
         ? readLineStart + Math.max(0, limit - 1)
         : lineEnd;
     return {
-      label: 'Read',
+      label: "Read",
       detail: lineRangeDetail(readLineStart, readLineEnd),
       filePath: absoluteFilePath,
       lineStart: readLineStart,
@@ -876,7 +968,10 @@ function toolMetadata(
     };
   }
 
-  if (/^(edit|write|multiedit|notebookedit)$/i.test(toolName) && absoluteFilePath) {
+  if (
+    /^(edit|write|multiedit|notebookedit)$/i.test(toolName) &&
+    absoluteFilePath
+  ) {
     return {
       label: toolDisplayName(toolName),
       detail: undefined,
@@ -891,10 +986,16 @@ function toolMetadata(
     const basePath = firstString(input.path);
     return {
       label: toolDisplayName(toolName),
-      detail: [pattern ? `pattern: ${pattern}` : undefined, basePath ? `path: ${path.basename(basePath) || basePath}` : undefined]
+      detail: [
+        pattern ? `pattern: ${pattern}` : undefined,
+        basePath ? `path: ${path.basename(basePath) || basePath}` : undefined,
+      ]
         .filter(Boolean)
-        .join(', '),
-      filePath: absoluteFilePath && isProbablyFilePath(absoluteFilePath) ? absoluteFilePath : undefined,
+        .join(", "),
+      filePath:
+        absoluteFilePath && isProbablyFilePath(absoluteFilePath)
+          ? absoluteFilePath
+          : undefined,
     };
   }
 
@@ -909,7 +1010,10 @@ function toolMetadata(
   return {
     label: toolDisplayName(toolName),
     detail: compactInputDetail(input),
-    filePath: absoluteFilePath && isProbablyFilePath(absoluteFilePath) ? absoluteFilePath : undefined,
+    filePath:
+      absoluteFilePath && isProbablyFilePath(absoluteFilePath)
+        ? absoluteFilePath
+        : undefined,
     lineStart,
     lineEnd,
   };
@@ -917,23 +1021,25 @@ function toolMetadata(
 
 function toolDisplayName(toolName: string): string {
   const names: Record<string, string> = {
-    read: 'Read',
-    edit: 'Edit',
-    multiedit: 'MultiEdit',
-    write: 'Write',
-    notebookedit: 'NotebookEdit',
-    grep: 'Search',
-    glob: 'Search',
-    search: 'Search',
-    bash: 'Bash',
-    powershell: 'PowerShell',
+    read: "Read",
+    edit: "Edit",
+    multiedit: "MultiEdit",
+    write: "Write",
+    notebookedit: "NotebookEdit",
+    grep: "Search",
+    glob: "Search",
+    search: "Search",
+    bash: "Bash",
+    powershell: "PowerShell",
   };
   return names[toolName.toLowerCase()] ?? toolName;
 }
 
 function normalizeToolFilePath(filePath: string): string {
   const expanded = expandHome(filePath);
-  return path.isAbsolute(expanded) ? path.normalize(expanded) : path.resolve(getWorkspaceCwd(), expanded);
+  return path.isAbsolute(expanded)
+    ? path.normalize(expanded)
+    : path.resolve(getWorkspaceCwd(), expanded);
 }
 
 function isProbablyFilePath(filePath: string): boolean {
@@ -944,15 +1050,25 @@ function isProbablyFilePath(filePath: string): boolean {
   }
 }
 
-function lineRangeDetail(start: number | undefined, end: number | undefined): string | undefined {
+function lineRangeDetail(
+  start: number | undefined,
+  end: number | undefined,
+): string | undefined {
   if (start === undefined) {
     return undefined;
   }
   return end === undefined ? `${start} 行起` : `${start}~${end} 行`;
 }
 
-function compactInputDetail(input: Record<string, unknown>): string | undefined {
-  const preferred = firstString(input.pattern, input.query, input.command, input.description);
+function compactInputDetail(
+  input: Record<string, unknown>,
+): string | undefined {
+  const preferred = firstString(
+    input.pattern,
+    input.query,
+    input.command,
+    input.description,
+  );
   if (preferred) {
     return truncateMiddle(preferred, 96);
   }
@@ -960,25 +1076,26 @@ function compactInputDetail(input: Record<string, unknown>): string | undefined 
 }
 
 function summarizeToolResult(content: unknown): string | undefined {
-  const text = typeof content === 'string' ? content : textFromToolResultContent(content);
+  const text =
+    typeof content === "string" ? content : textFromToolResultContent(content);
   if (!text) {
     return undefined;
   }
-  const firstLine = text.split(/\r?\n/).find(line => line.trim());
+  const firstLine = text.split(/\r?\n/).find((line) => line.trim());
   return firstLine ? truncateMiddle(firstLine.trim(), 120) : undefined;
 }
 
 function textFromToolResultContent(content: unknown): string {
   if (!Array.isArray(content)) {
-    return '';
+    return "";
   }
   return content
-    .map(item => {
+    .map((item) => {
       const record = asRecord(item);
-      return asString(record?.text) ?? '';
+      return asString(record?.text) ?? "";
     })
     .filter(Boolean)
-    .join('\n');
+    .join("\n");
 }
 
 function formatElapsed(value: number | undefined): string | undefined {
@@ -987,7 +1104,7 @@ function formatElapsed(value: number | undefined): string | undefined {
 
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
-    if (typeof value === 'string' && value.trim()) {
+    if (typeof value === "string" && value.trim()) {
       return value;
     }
   }
@@ -996,10 +1113,14 @@ function firstString(...values: unknown[]): string | undefined {
 
 function firstNumber(...values: unknown[]): number | undefined {
   for (const value of values) {
-    if (typeof value === 'number' && Number.isFinite(value)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
       return value;
     }
-    if (typeof value === 'string' && value.trim() && Number.isFinite(Number(value))) {
+    if (
+      typeof value === "string" &&
+      value.trim() &&
+      Number.isFinite(Number(value))
+    ) {
       return Number(value);
     }
   }
@@ -1016,19 +1137,25 @@ function truncateMiddle(value: string, maxLength: number): string {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === 'object' ? (value as Record<string, unknown>) : undefined;
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 function asString(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+  return typeof value === "string" ? value : undefined;
 }
 
 function asNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function parseTokenUsage(

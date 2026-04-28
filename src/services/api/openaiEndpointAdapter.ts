@@ -12,6 +12,8 @@ type AdapterOptions = {
 type AnthropicBlock = {
   type?: string
   text?: string
+  thinking?: string
+  signature?: string
   id?: string
   name?: string
   input?: unknown
@@ -184,6 +186,54 @@ function textFromContent(content: unknown): string {
     )
     .filter(Boolean)
     .join('\n')
+}
+
+function thinkingFromContent(content: unknown): string | undefined {
+  if (!Array.isArray(content)) {
+    return undefined
+  }
+  const thinking = content
+    .map(block =>
+      block &&
+      typeof block === 'object' &&
+      (block as AnthropicBlock).type === 'thinking'
+        ? ((block as AnthropicBlock).thinking ?? '')
+        : '',
+    )
+    .filter(Boolean)
+    .join('\n')
+  return thinking || undefined
+}
+
+function reasoningTextFromOpenAI(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value.length > 0 ? value : undefined
+  }
+  if (Array.isArray(value)) {
+    const parts = value
+      .map(item => reasoningTextFromOpenAI(item))
+      .filter((item): item is string => Boolean(item))
+    return parts.length > 0 ? parts.join('\n') : undefined
+  }
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  return (
+    reasoningTextFromOpenAI(record.reasoning_content) ??
+    reasoningTextFromOpenAI(record.reasoningContent) ??
+    reasoningTextFromOpenAI(record.reasoning) ??
+    reasoningTextFromOpenAI(record.summary) ??
+    reasoningTextFromOpenAI(record.content) ??
+    reasoningTextFromOpenAI(record.text)
+  )
+}
+
+function reasoningContentFromChatMessage(message: any): string | undefined {
+  return reasoningTextFromOpenAI(
+    message?.reasoning_content ?? message?.reasoningContent ?? message?.reasoning,
+  )
 }
 
 function textFromSystem(system: unknown): string | undefined {
@@ -451,9 +501,11 @@ function toChatMessages(
           ]
         })
       const assistantText = textFromContent(message.content)
+      const reasoningContent = thinkingFromContent(message.content)
       result.push({
         role: 'assistant',
         content: assistantText || (toolCalls.length > 0 ? null : ''),
+        ...(reasoningContent && { reasoning_content: reasoningContent }),
         ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
       })
       if (!options.responses) {
@@ -696,6 +748,10 @@ function extractResponseContent(payload: any): AnthropicBlock[] {
   if (Array.isArray(payload?.choices)) {
     const message = payload.choices[0]?.message ?? {}
     const blocks: AnthropicBlock[] = []
+    const reasoningContent = reasoningContentFromChatMessage(message)
+    if (reasoningContent) {
+      blocks.push({ type: 'thinking', thinking: reasoningContent, signature: '' })
+    }
     if (message.content) {
       blocks.push({ type: 'text', text: String(message.content) })
     }
@@ -716,6 +772,16 @@ function extractResponseContent(payload: any): AnthropicBlock[] {
 
   const blocks: AnthropicBlock[] = []
   for (const item of payload?.output ?? []) {
+    if (item?.type === 'reasoning') {
+      const reasoningContent = reasoningTextFromOpenAI(item)
+      if (reasoningContent) {
+        blocks.push({
+          type: 'thinking',
+          thinking: reasoningContent,
+          signature: '',
+        })
+      }
+    }
     if (item?.type === 'function_call') {
       const name = validOpenAIToolName(item.name)
       if (name) {
@@ -798,6 +864,8 @@ function toAnthropicSSE(message: Record<string, unknown>): string {
       content_block:
         block.type === 'tool_use'
           ? { type: 'tool_use', id: block.id, name: block.name, input: {} }
+          : block.type === 'thinking'
+            ? { type: 'thinking', thinking: '' }
           : { type: 'text', text: '' },
     })
     if (block.type === 'tool_use') {
@@ -809,6 +877,19 @@ function toAnthropicSSE(message: Record<string, unknown>): string {
           partial_json: JSON.stringify(block.input ?? {}),
         },
       })
+    } else if (block.type === 'thinking') {
+      output += sseEvent('content_block_delta', {
+        type: 'content_block_delta',
+        index,
+        delta: { type: 'thinking_delta', thinking: block.thinking ?? '' },
+      })
+      if (block.signature) {
+        output += sseEvent('content_block_delta', {
+          type: 'content_block_delta',
+          index,
+          delta: { type: 'signature_delta', signature: block.signature },
+        })
+      }
     } else {
       output += sseEvent('content_block_delta', {
         type: 'content_block_delta',
@@ -900,6 +981,11 @@ function decodeSSEChunks(
             controller.enqueue(encoder.encode(converted))
             return
           }
+          const final = onEvent('done', { type: 'done' })
+          if (final) {
+            controller.enqueue(encoder.encode(final))
+            return
+          }
           controller.close()
           return
         }
@@ -927,8 +1013,11 @@ function convertRawSSEEvent(
     }
   }
   const dataText = dataLines.length > 0 ? dataLines.join('\n') : raw.trim()
-  if (!dataText || dataText === '[DONE]') {
+  if (!dataText) {
     return undefined
+  }
+  if (dataText === '[DONE]') {
+    return onEvent('done', { type: 'done' })
   }
   try {
     return onEvent(event, JSON.parse(dataText))
@@ -939,12 +1028,14 @@ function convertRawSSEEvent(
 
 function createChatStreamAdapter(model: string) {
   let started = false
+  let finished = false
   let textBlockOpen = false
+  let thinkingBlockOpen = false
   let blockIndex = 0
   const toolCalls = new Map<number, ToolCallAccumulator>()
   const messageId = `msg_${randomUUID()}`
 
-  return (_event: string, data: any): string | undefined => {
+  return (event: string, data: any): string | undefined => {
     let output = ''
     if (!started) {
       started = true
@@ -963,7 +1054,34 @@ function createChatStreamAdapter(model: string) {
 
     const choice = data.choices?.[0]
     const delta = choice?.delta ?? {}
+    const reasoningDelta = reasoningTextFromOpenAI(
+      delta.reasoning_content ?? delta.reasoningContent ?? delta.reasoning,
+    )
+    if (reasoningDelta) {
+      if (!thinkingBlockOpen) {
+        thinkingBlockOpen = true
+        output += sseEvent('content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: { type: 'thinking', thinking: '' },
+        })
+      }
+      output += sseEvent('content_block_delta', {
+        type: 'content_block_delta',
+        index: blockIndex,
+        delta: { type: 'thinking_delta', thinking: reasoningDelta },
+      })
+    }
+
     if (typeof delta.content === 'string' && delta.content.length > 0) {
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
       if (!textBlockOpen) {
         textBlockOpen = true
         output += sseEvent('content_block_start', {
@@ -988,7 +1106,16 @@ function createChatStreamAdapter(model: string) {
       toolCalls.set(index, current)
     }
 
-    if (choice?.finish_reason) {
+    if (choice?.finish_reason && !finished) {
+      finished = true
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
       if (textBlockOpen) {
         output += sseEvent('content_block_stop', {
           type: 'content_block_stop',
@@ -1042,13 +1169,69 @@ function createChatStreamAdapter(model: string) {
       output += sseEvent('message_stop', { type: 'message_stop' })
     }
 
+    if (event === 'done' && started && !finished) {
+      finished = true
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
+      if (textBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        textBlockOpen = false
+      }
+      const validToolCalls = [...toolCalls.values()].filter(call =>
+        validOpenAIToolName(call.name),
+      )
+      for (const call of validToolCalls) {
+        output += sseEvent('content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: call.id ?? `toolu_${randomUUID()}`,
+            name: validOpenAIToolName(call.name),
+            input: {},
+          },
+        })
+        output += sseEvent('content_block_delta', {
+          type: 'content_block_delta',
+          index: blockIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: call.arguments || '{}',
+          },
+        })
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+      }
+      output += sseEvent('message_delta', {
+        type: 'message_delta',
+        delta: { stop_reason: validToolCalls.length > 0 ? 'tool_use' : 'end_turn' },
+        usage: { output_tokens: 0 },
+      })
+      output += sseEvent('message_stop', { type: 'message_stop' })
+    }
+
     return output || undefined
   }
 }
 
 function createResponsesStreamAdapter(model: string) {
   let started = false
+  let finished = false
   let textBlockOpen = false
+  let thinkingBlockOpen = false
   let blockIndex = 0
   const messageId = `msg_${randomUUID()}`
   const toolCalls = new Map<number, ToolCallAccumulator>()
@@ -1071,7 +1254,35 @@ function createResponsesStreamAdapter(model: string) {
       })
     }
 
+    const reasoningDelta =
+      event.includes('reasoning') && typeof data.delta === 'string'
+        ? data.delta
+        : undefined
+    if (reasoningDelta) {
+      if (!thinkingBlockOpen) {
+        thinkingBlockOpen = true
+        output += sseEvent('content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: { type: 'thinking', thinking: '' },
+        })
+      }
+      output += sseEvent('content_block_delta', {
+        type: 'content_block_delta',
+        index: blockIndex,
+        delta: { type: 'thinking_delta', thinking: reasoningDelta },
+      })
+    }
+
     if (event === 'response.output_text.delta' && typeof data.delta === 'string') {
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
       if (!textBlockOpen) {
         textBlockOpen = true
         output += sseEvent('content_block_start', {
@@ -1126,7 +1337,16 @@ function createResponsesStreamAdapter(model: string) {
       toolCalls.set(index, current)
     }
 
-    if (event === 'response.completed') {
+    if (event === 'response.completed' && !finished) {
+      finished = true
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
       if (textBlockOpen) {
         output += sseEvent('content_block_stop', {
           type: 'content_block_stop',
@@ -1169,6 +1389,60 @@ function createResponsesStreamAdapter(model: string) {
         usage: {
           output_tokens: data.response?.usage?.output_tokens ?? 0,
         },
+      })
+      output += sseEvent('message_stop', { type: 'message_stop' })
+    }
+
+    if (event === 'done' && started && !finished) {
+      finished = true
+      if (thinkingBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        thinkingBlockOpen = false
+      }
+      if (textBlockOpen) {
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+        textBlockOpen = false
+      }
+      const validToolCalls = [...toolCalls.values()].filter(call =>
+        validOpenAIToolName(call.name),
+      )
+      for (const call of validToolCalls) {
+        output += sseEvent('content_block_start', {
+          type: 'content_block_start',
+          index: blockIndex,
+          content_block: {
+            type: 'tool_use',
+            id: call.callId ?? call.id ?? `toolu_${randomUUID()}`,
+            name: validOpenAIToolName(call.name),
+            input: {},
+          },
+        })
+        output += sseEvent('content_block_delta', {
+          type: 'content_block_delta',
+          index: blockIndex,
+          delta: {
+            type: 'input_json_delta',
+            partial_json: call.arguments || '{}',
+          },
+        })
+        output += sseEvent('content_block_stop', {
+          type: 'content_block_stop',
+          index: blockIndex,
+        })
+        blockIndex += 1
+      }
+      output += sseEvent('message_delta', {
+        type: 'message_delta',
+        delta: { stop_reason: validToolCalls.length > 0 ? 'tool_use' : 'end_turn' },
+        usage: { output_tokens: 0 },
       })
       output += sseEvent('message_stop', { type: 'message_stop' })
     }

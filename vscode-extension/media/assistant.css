@@ -28,7 +28,13 @@ body {
   overflow: hidden;
   color: var(--text);
   background: var(--bg);
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-family: var(
+    --vscode-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
   font-size: var(--vscode-font-size, 13px);
 }
 
@@ -242,7 +248,10 @@ h1 {
 
 .task-card.primary {
   color: var(--text);
-  background: var(--vscode-list-activeSelectionBackground, rgba(14, 99, 156, 0.35));
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    rgba(14, 99, 156, 0.35)
+  );
 }
 
 .task-card:hover {
@@ -267,7 +276,11 @@ h1 {
   min-height: 120px;
   overflow: auto;
   padding-right: 2px;
-  scrollbar-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4)) transparent;
+  scrollbar-color: var(
+      --vscode-scrollbarSlider-background,
+      rgba(121, 121, 121, 0.4)
+    )
+    transparent;
 }
 
 .empty-state {
@@ -374,7 +387,13 @@ h1 {
 
 .markdown-body {
   white-space: normal;
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-family: var(
+    --vscode-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
 }
 
 .markdown-body p {
@@ -758,6 +777,57 @@ h1 {
   white-space: nowrap;
 }
 
+.thinking-panel {
+  margin: 0 8px 8px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--panel-2) 64%, transparent);
+}
+
+.thinking-summary {
+  display: flex;
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 11px;
+  list-style: none;
+}
+
+.thinking-summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-summary span {
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.thinking-summary small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.thinking-body {
+  max-height: 240px;
+  overflow: auto;
+  border-top: 1px solid color-mix(in srgb, var(--border) 52%, transparent);
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.thinking-panel.failed .thinking-summary span {
+  color: var(--danger);
+}
+
 .step-file-chip {
   max-width: 100%;
   min-height: 22px;
@@ -1001,7 +1071,10 @@ textarea:disabled {
 }
 
 .suggest-item.selected {
-  background: var(--vscode-list-activeSelectionBackground, rgba(14, 99, 156, 0.35));
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    rgba(14, 99, 156, 0.35)
+  );
   color: var(--vscode-list-activeSelectionForeground, var(--text));
 }
 
@@ -1023,7 +1096,13 @@ textarea:disabled {
   display: grid;
   gap: 8px;
   color: var(--muted);
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-family: var(
+    --vscode-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
 }
 
 .compact-line {
@@ -1070,7 +1149,10 @@ textarea:disabled {
 
 .composer-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(84px, 0.52fr) minmax(104px, 0.58fr);
+  grid-template-columns: minmax(0, 1fr) minmax(84px, 0.52fr) minmax(
+      104px,
+      0.58fr
+    );
   gap: 8px;
   margin-top: 8px;
   padding: 8px;
@@ -1172,7 +1254,10 @@ textarea:disabled {
 .control-strip,
 .composer-controls {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(86px, 0.55fr) minmax(86px, 0.55fr);
+  grid-template-columns: minmax(0, 1fr) minmax(86px, 0.55fr) minmax(
+      86px,
+      0.55fr
+    );
   gap: 8px;
   padding: 8px;
 }
@@ -1462,9 +1547,21 @@ select {
 /* Ant Design inspired polish for the VS Code webview surface. */
 :root {
   --ant-bg: var(--vscode-sideBar-background, #f5f7fb);
-  --ant-card: color-mix(in srgb, var(--vscode-editorWidget-background, #ffffff) 94%, transparent);
-  --ant-card-soft: color-mix(in srgb, var(--vscode-input-background, #ffffff) 88%, var(--ant-bg));
-  --ant-border: color-mix(in srgb, var(--vscode-panel-border, #d9d9d9) 70%, transparent);
+  --ant-card: color-mix(
+    in srgb,
+    var(--vscode-editorWidget-background, #ffffff) 94%,
+    transparent
+  );
+  --ant-card-soft: color-mix(
+    in srgb,
+    var(--vscode-input-background, #ffffff) 88%,
+    var(--ant-bg)
+  );
+  --ant-border: color-mix(
+    in srgb,
+    var(--vscode-panel-border, #d9d9d9) 70%,
+    transparent
+  );
   --ant-border-hover: color-mix(in srgb, var(--accent) 60%, var(--ant-border));
   --ant-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   --ant-shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.06);
@@ -1473,7 +1570,11 @@ select {
 
 body {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, transparent), transparent 260px),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--accent) 6%, transparent),
+      transparent 260px
+    ),
     var(--ant-bg);
 }
 
@@ -1531,7 +1632,10 @@ h1 {
   border-radius: 8px;
   background: var(--ant-card-soft);
   color: var(--muted);
-  transition: border-color 120ms ease, background 120ms ease, color 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .icon-button:hover,
@@ -1579,7 +1683,10 @@ h1 {
   box-shadow: var(--ant-shadow-sm);
   font-size: 13px;
   font-weight: 600;
-  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    transform 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .task-card:hover {
@@ -1611,7 +1718,11 @@ h1 {
   min-height: 100%;
   border-style: solid;
   background:
-    radial-gradient(circle at center 38%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 190px),
+    radial-gradient(
+      circle at center 38%,
+      color-mix(in srgb, var(--accent) 7%, transparent),
+      transparent 190px
+    ),
     var(--ant-card);
 }
 
@@ -1946,7 +2057,10 @@ select:focus-visible {
 
 .composer-actions {
   display: grid;
-  grid-template-columns: 34px 34px minmax(0, auto) minmax(0, auto) 1fr auto auto auto;
+  grid-template-columns: 34px 34px minmax(0, auto) minmax(
+      0,
+      auto
+    ) 1fr auto auto auto;
   align-items: center;
 }
 
@@ -1973,7 +2087,11 @@ select:focus-visible {
 }
 
 .steer-action {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--ant-border, var(--border)));
+  border-color: color-mix(
+    in srgb,
+    var(--accent) 40%,
+    var(--ant-border, var(--border))
+  );
   color: var(--accent);
 }
 
@@ -2857,12 +2975,24 @@ textarea:focus-visible {
     var(--vscode-toolbar-hoverBackground, transparent)
   );
   --hc-control-hover: color-mix(in srgb, var(--accent) 12%, var(--hc-control));
-  --hc-border: color-mix(in srgb, var(--vscode-input-border, var(--border)) 74%, transparent);
+  --hc-border: color-mix(
+    in srgb,
+    var(--vscode-input-border, var(--border)) 74%,
+    transparent
+  );
   --hc-code-bg: var(
     --vscode-textCodeBlock-background,
-    color-mix(in srgb, var(--vscode-editor-background, var(--panel-2)) 90%, var(--text) 4%)
+    color-mix(
+      in srgb,
+      var(--vscode-editor-background, var(--panel-2)) 90%,
+      var(--text) 4%
+    )
   );
-  --hc-inline-code-bg: color-mix(in srgb, var(--hc-code-bg) 88%, var(--accent) 5%);
+  --hc-inline-code-bg: color-mix(
+    in srgb,
+    var(--hc-code-bg) 88%,
+    var(--accent) 5%
+  );
 }
 
 body {
@@ -2954,7 +3084,13 @@ h1 {
   overflow-x: auto;
   padding: 12px 14px;
   color: var(--text);
-  font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  font-family: var(
+    --vscode-font-family,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif
+  );
   font-size: 13px;
   line-height: 1.62;
   overflow-wrap: anywhere;
@@ -3465,7 +3601,11 @@ h1 {
   border: 0;
   border-radius: 13px;
   padding: 0 12px 0 14px;
-  background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground, var(--hc-control)) 72%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-toolbar-hoverBackground, var(--hc-control)) 72%,
+    transparent
+  );
   color: var(--text);
   font-size: 13px;
   font-weight: 640;
@@ -3504,7 +3644,11 @@ h1 {
 }
 
 .composer .send:hover {
-  background: color-mix(in srgb, var(--vscode-foreground, #111111) 86%, var(--accent));
+  background: color-mix(
+    in srgb,
+    var(--vscode-foreground, #111111) 86%,
+    var(--accent)
+  );
   color: var(--vscode-editor-background, #ffffff);
 }
 
@@ -3520,7 +3664,11 @@ h1 {
 .composer .run-action:hover,
 .composer .model-effort-button:hover {
   border-color: transparent;
-  background: color-mix(in srgb, var(--vscode-toolbar-hoverBackground, var(--hc-control)) 82%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-toolbar-hoverBackground, var(--hc-control)) 82%,
+    transparent
+  );
 }
 
 @media (max-width: 560px) {
@@ -3962,7 +4110,11 @@ h1 {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--vscode-textCodeBlock-background, var(--panel-2)) 92%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--vscode-textCodeBlock-background, var(--panel-2)) 92%,
+    transparent
+  );
 }
 
 .code-block-head {

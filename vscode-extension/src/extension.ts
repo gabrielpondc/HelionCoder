@@ -3,6 +3,7 @@ import { HelionCli, getWorkspaceCwd } from './cli';
 import { HelionInlineCompletionProvider } from './completion';
 import { buildContextPrompt, getEditorSnapshot } from './editorContext';
 import { ModelResolver } from './modelResolver';
+import { checkForUpdates } from './updateChecker';
 import { HelionAssistantViewProvider } from './webview';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -86,6 +87,10 @@ export function activate(context: vscode.ExtensionContext): void {
       void vscode.window.showInformationMessage(
         `已检测到 ${models.length} 个 HelionCoder 模型选项。`,
       );
+    }),
+    vscode.commands.registerCommand('helionCoder.checkUpdates', async () => {
+      const version = String(context.extension.packageJSON.version ?? '0.0.0');
+      await checkForUpdates(version, output);
     }),
     vscode.commands.registerCommand('helionCoder.configureExecutable', async () => {
       const current = vscode.workspace

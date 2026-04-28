@@ -1,13 +1,12 @@
 {
-  "name": "helioncoder",
-  "version": "0.0.4",
+  "name": "helion-coder",
+  "version": "0.4.1",
   "description": "HelionCoder CLI powered by OpenAI-compatible APIs.",
   "license": "UNLICENSED",
   "private": true,
   "type": "module",
   "main": "src/entrypoints/cli.tsx",
   "bin": {
-    "helioncoder": "src/entrypoints/cli.tsx",
     "helion-coder": "src/entrypoints/cli.tsx"
   },
   "scripts": {

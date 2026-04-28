@@ -28,6 +28,43 @@ HelionCoder 是一个基于 OpenAI 兼容 API 的终端 AI 编程 CLI。项目�
 - Node.js 20+（运行 `dist/cli.mjs`）
 - npm（用于部分子项目或无 Bun 环境）
 
+## 快速安装
+
+安装脚本会根据当前系统和架构自动选择 GitHub Release 里的最新版二进制产物，并安装成 `helion-coder` 命令。
+
+- macOS / Linux：安装到 `/usr/local/bin/helion-coder`。脚本会自动设置可执行权限，macOS 会强制使用 `sudo install`，并清理 quarantine 标记，避免出现“已损坏”提示。
+- Windows：使用 PowerShell 脚本安装到用户级 bin 目录，并写入用户 PATH。打开新终端后可直接运行 `helion-coder`。
+
+安装最新版：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/install.sh | sh
+```
+
+Windows PowerShell：
+
+```powershell
+iwr https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/install.ps1 -UseB | iex
+```
+
+安装指定版本。Release tag 直接使用版本号，例如 `0.0.4`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/install.sh | sh -s -- 0.0.4
+```
+
+Windows PowerShell 指定版本：
+
+```powershell
+$env:HELION_VERSION="0.0.4"; iwr https://raw.githubusercontent.com/gabrielpondc/HelionCoder/main/scripts/install.ps1 -UseB | iex
+```
+
+安装完成后：
+
+```bash
+helion-coder --version
+```
+
 安装依赖：
 
 ```bash
@@ -225,7 +262,7 @@ npm pack --dry-run
 
 ```bash
 npm install -g .
-helioncoder --version
+helion-coder --version
 helion-coder --help
 ```
 
