@@ -11,6 +11,20 @@
 
 HelionCoder 是一个基于 OpenAI 兼容 API 的终端 AI 编程 CLI。项目包含主 CLI、可选的 Web 终端资源、VS Code 插件，以及用于探索 Claude Code 源码快照的 MCP Server。
 
+## 目录
+
+- [项目内容](#项目内容)
+- [环境要求](#环境要求)
+- [快速安装](#快速安装)
+- [基础配置](#基础配置)
+- [本地开发](#本地开发)
+- [编译与打包流程](#编译与打包流程)
+- [质量检查](#质量检查)
+- [MCP Server](#mcp-server)
+- [VS Code 插件配置](#vs-code-插件配置)
+- [常用命令速查](#常用命令速查)
+- [贡献说明](#贡献说明)
+
 ## 项目内容
 
 - `src/`：主 CLI 源码，入口为 `src/entrypoints/cli.tsx`。
