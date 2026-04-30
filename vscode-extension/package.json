@@ -2,7 +2,7 @@
   "name": "helion-coder-vscode",
   "displayName": "HelionCoder",
   "description": "HelionCoder 本地 CLI 的 VS Code 集成，包含助手面板和行内补全。",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "publisher": "GabrielPondC",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -26,6 +26,7 @@
     "onCommand:helionCoder.ask",
     "onCommand:helionCoder.explainSelection",
     "onCommand:helionCoder.completeNow",
+    "onCommand:helionCoder.toggleCompletion",
     "onCommand:helionCoder.selectModel",
     "onCommand:helionCoder.refreshModels",
     "onCommand:helionCoder.checkUpdates",
@@ -64,6 +65,11 @@
       {
         "command": "helionCoder.completeNow",
         "title": "触发行内补全",
+        "category": "HelionCoder"
+      },
+      {
+        "command": "helionCoder.toggleCompletion",
+        "title": "开启/关闭行内补全",
         "category": "HelionCoder"
       },
       {
@@ -269,6 +275,9 @@
         },
         {
           "command": "helionCoder.completeNow"
+        },
+        {
+          "command": "helionCoder.toggleCompletion"
         },
         {
           "command": "helionCoder.selectModel"

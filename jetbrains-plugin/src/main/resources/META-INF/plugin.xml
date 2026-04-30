@@ -1,0 +1,46 @@
+<idea-plugin>
+    <id>com.helioncoder.jetbrains</id>
+    <name>HelionCoder</name>
+    <vendor>GabrielPondC</vendor>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+            id="HelionCoder"
+            anchor="right"
+            factoryClass="com.helioncoder.jetbrains.HelionToolWindowFactory"/>
+        <applicationConfigurable
+            id="helionCoder.settings"
+            displayName="HelionCoder"
+            groupId="tools"
+            instance="com.helioncoder.jetbrains.HelionSettingsConfigurable"/>
+    </extensions>
+
+    <actions>
+        <group id="HelionCoder.Menu" text="HelionCoder" popup="true">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+            <action
+                id="HelionCoder.OpenToolWindow"
+                class="com.helioncoder.jetbrains.actions.OpenToolWindowAction"
+                text="打开助手面板"/>
+            <action
+                id="HelionCoder.Ask"
+                class="com.helioncoder.jetbrains.actions.AskAction"
+                text="询问 HelionCoder"/>
+            <action
+                id="HelionCoder.ExplainSelection"
+                class="com.helioncoder.jetbrains.actions.ExplainSelectionAction"
+                text="解释选区"/>
+            <action
+                id="HelionCoder.MakeAndAsk"
+                class="com.helioncoder.jetbrains.actions.MakeAndAskAction"
+                text="编译项目并询问 HelionCoder"/>
+            <separator/>
+            <action
+                id="HelionCoder.ConfigureExecutable"
+                class="com.helioncoder.jetbrains.actions.ConfigureExecutableAction"
+                text="配置 CLI 可执行文件"/>
+        </group>
+    </actions>
+</idea-plugin>

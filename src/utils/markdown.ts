@@ -40,10 +40,90 @@ export function applyMarkdown(
 ): string {
   configureMarked()
   return marked
-    .lexer(stripPromptXMLTags(content))
+    .lexer(normalizeTerminalMarkdown(stripPromptXMLTags(content)))
     .map(_ => formatToken(_, theme, 0, null, null, highlight))
     .join('')
     .trim()
+}
+
+export function normalizeTerminalMarkdown(content: string): string {
+  return transformOutsideCode(content, normalizeTerminalMathText)
+}
+
+function transformOutsideCode(
+  content: string,
+  transform: (text: string) => string,
+): string {
+  let result = ''
+  let index = 0
+  const fencePattern = /(^|\n)(`{3,}|~{3,})[^\n]*(?:\n[\s\S]*?(?:\n\2[ \t]*(?=\n|$)|$)|$)/g
+  for (const match of content.matchAll(fencePattern)) {
+    const start = match.index ?? 0
+    result += transformInlineNonCode(content.slice(index, start), transform)
+    result += match[0]
+    index = start + match[0].length
+  }
+  result += transformInlineNonCode(content.slice(index), transform)
+  return result
+}
+
+function transformInlineNonCode(
+  content: string,
+  transform: (text: string) => string,
+): string {
+  let result = ''
+  let index = 0
+  const inlineCodePattern = /`+[^`\n]*`+/g
+  for (const match of content.matchAll(inlineCodePattern)) {
+    const start = match.index ?? 0
+    result += transform(content.slice(index, start))
+    result += match[0]
+    index = start + match[0].length
+  }
+  result += transform(content.slice(index))
+  return result
+}
+
+function normalizeTerminalMathText(text: string): string {
+  return stripMathDelimiters(replaceLatexSymbols(text))
+}
+
+function stripMathDelimiters(text: string): string {
+  return text
+    .replace(/\\\[([\s\S]*?)\\\]/g, (_match, expression: string) =>
+      expression.trim(),
+    )
+    .replace(/\\\(([\s\S]*?)\\\)/g, (_match, expression: string) =>
+      expression.trim(),
+    )
+    .replace(/\$\$([\s\S]*?)\$\$/g, (_match, expression: string) =>
+      expression.trim(),
+    )
+    .replace(
+      /(^|[^\w$])\$([^$\n]+?)\$([^\w$]|$)/g,
+      (_match, before: string, expression: string, after: string) =>
+        `${before}${expression.trim()}${after}`,
+    )
+}
+
+function replaceLatexSymbols(text: string): string {
+  return text
+    .replace(/\\(?:Rightarrow|Longrightarrow)\b/g, '⇒')
+    .replace(/\\(?:Leftarrow|Longleftarrow)\b/g, '⇐')
+    .replace(/\\(?:Leftrightarrow|Longleftrightarrow|iff)\b/g, '⇔')
+    .replace(/\\(?:rightarrow|to|rarr|longrightarrow|implies|arrow)\b/g, '→')
+    .replace(/\\(?:leftarrow|gets|larr|longleftarrow)\b/g, '←')
+    .replace(/\\(?:leftrightarrow|longleftrightarrow)\b/g, '↔')
+    .replace(/\\(?:uparrow|uarr)\b/g, '↑')
+    .replace(/\\(?:downarrow|darr)\b/g, '↓')
+    .replace(/\\times\b/g, '×')
+    .replace(/\\cdot\b/g, '·')
+    .replace(/\\pm\b/g, '±')
+    .replace(/\\neq\b/g, '≠')
+    .replace(/\\leq?\b/g, '≤')
+    .replace(/\\geq?\b/g, '≥')
+    .replace(/\\approx\b/g, '≈')
+    .replace(/\\infty\b/g, '∞')
 }
 
 export function formatToken(
@@ -379,4 +459,3 @@ export function padAligned(
   }
   return content + ' '.repeat(padding)
 }
-

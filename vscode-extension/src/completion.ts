@@ -17,12 +17,16 @@ interface CompletionSnapshot {
 export class HelionInlineCompletionProvider
   implements vscode.InlineCompletionItemProvider
 {
-  private readonly status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 90);
+  private hideStatusTimer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly cli: HelionCli) {}
+  constructor(
+    private readonly cli: HelionCli,
+    private readonly status: vscode.StatusBarItem,
+    private readonly restoreStatus: () => void,
+  ) {}
 
   dispose(): void {
-    this.status.dispose();
+    this.clearStatusTimer();
   }
 
   async provideInlineCompletionItems(
@@ -62,7 +66,7 @@ export class HelionInlineCompletionProvider
     const cwd = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? getWorkspaceCwd();
 
     try {
-      this.showStatus('$(sparkle) Helion 补全中...', 0);
+      this.showStatus('$(sync~spin) Helion 补全中...', 0);
       const result = await this.cli.runPrompt(prompt, {
         cwd,
         timeoutMs,
@@ -86,17 +90,30 @@ export class HelionInlineCompletionProvider
       if (!token.isCancellationRequested) {
         console.warn(error);
         this.showStatus('Helion 补全失败', 2600);
+      } else {
+        this.restoreStatus();
       }
       return undefined;
     }
   }
 
   private showStatus(text: string, hideAfterMs: number): void {
+    this.clearStatusTimer();
     this.status.text = text;
     this.status.tooltip = '来自 HelionCoder 的编辑器行内补全';
     this.status.show();
     if (hideAfterMs > 0) {
-      setTimeout(() => this.status.hide(), hideAfterMs);
+      this.hideStatusTimer = setTimeout(() => {
+        this.hideStatusTimer = undefined;
+        this.restoreStatus();
+      }, hideAfterMs);
+    }
+  }
+
+  private clearStatusTimer(): void {
+    if (this.hideStatusTimer) {
+      clearTimeout(this.hideStatusTimer);
+      this.hideStatusTimer = undefined;
     }
   }
 }

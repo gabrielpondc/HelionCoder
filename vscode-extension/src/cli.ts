@@ -27,6 +27,7 @@ export interface RunPromptOptions {
   thinkingMode?: string;
   planMode?: boolean;
   addDirs?: string[];
+  appendSystemPrompt?: string;
   streamJson?: boolean;
   onController?: (controller: RunPromptController) => void;
   onSideQuestion?: (response: SideQuestionResponse) => void;
@@ -204,6 +205,9 @@ export class HelionCli {
       "--add-dir",
       dir,
     ]);
+    const appendSystemPromptArgs = options.appendSystemPrompt?.trim()
+      ? ["--append-system-prompt", options.appendSystemPrompt.trim()]
+      : [];
     const outputArgs = options.streamJson
       ? [
           "-p",
@@ -226,6 +230,7 @@ export class HelionCli {
       ...permissionArgs,
       ...thinkingArgs,
       ...planArgs,
+      ...appendSystemPromptArgs,
       ...outputArgs,
     ];
     const cwd = options.cwd ?? getWorkspaceCwd();

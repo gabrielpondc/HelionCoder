@@ -505,6 +505,10 @@ async function installReleaseAsset(
 		}
 
 		await rename(tempPath, targetPath)
+		if (process.platform !== 'win32') {
+			await chmod(targetPath, 0o755)
+		}
+		await clearMacOSQuarantine(targetPath)
 		if (backupCreated) {
 			await rm(backupPath, { force: true })
 		}
@@ -514,6 +518,18 @@ async function installReleaseAsset(
 			await rename(backupPath, targetPath).catch(() => undefined)
 		}
 		throw error
+	}
+}
+
+async function clearMacOSQuarantine(targetPath: string): Promise<void> {
+	if (process.platform !== 'darwin') {
+		return
+	}
+	try {
+		await execFileAsync('xattr', ['-dr', 'com.apple.quarantine', targetPath])
+	} catch {
+		// Best effort only: chmod is the important cross-platform permission fix,
+		// and xattr may be missing or unnecessary on some macOS environments.
 	}
 }
 

@@ -5,7 +5,7 @@ import { useSettings } from '../hooks/useSettings.js';
 import { Ansi, Box, useTheme } from '../ink.js';
 import { type CliHighlight, getCliHighlightPromise } from '../utils/cliHighlight.js';
 import { hashContent } from '../utils/hash.js';
-import { configureMarked, formatToken } from '../utils/markdown.js';
+import { configureMarked, formatToken, normalizeTerminalMarkdown } from '../utils/markdown.js';
 import { stripPromptXMLTags } from '../utils/messages.js';
 import { MarkdownTable } from './MarkdownTable.js';
 type Props = {
@@ -131,7 +131,7 @@ function MarkdownBody(t0) {
   configureMarked();
   let elements;
   if ($[0] !== children || $[1] !== dimColor || $[2] !== highlight || $[3] !== theme) {
-    const tokens = cachedLexer(stripPromptXMLTags(children));
+    const tokens = cachedLexer(normalizeTerminalMarkdown(stripPromptXMLTags(children)));
     elements = [];
     let nonTableContent = "";
     const flushNonTableContent = function flushNonTableContent() {
@@ -199,7 +199,7 @@ export function StreamingMarkdown({
   // (line 29). When a closing tag arrives, stripped(N+1) is not a prefix
   // of stripped(N), but the startsWith reset below handles that with a
   // one-time re-lex on the smaller stripped string.
-  const stripped = stripPromptXMLTags(children);
+  const stripped = normalizeTerminalMarkdown(stripPromptXMLTags(children));
   const stablePrefixRef = useRef('');
 
   // Reset if text was replaced (defensive; normally unmount handles this)

@@ -1,4 +1,4 @@
-import { BROWSER_TOOLS } from '@ant/claude-for-chrome-mcp'
+import { BROWSER_TOOLS } from '../../shims/claude-for-chrome-mcp.js'
 import { chmod, mkdir, readFile, writeFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'

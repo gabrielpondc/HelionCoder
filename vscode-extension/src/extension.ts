@@ -16,17 +16,26 @@ export function activate(context: vscode.ExtensionContext): void {
     output,
     modelResolver,
   );
-  const inlineCompletionProvider = new HelionInlineCompletionProvider(cli);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 91);
   status.name = 'HelionCoder';
-  status.text = '$(sparkle) Helion';
-  status.tooltip = '打开 HelionCoder 面板';
-  status.command = 'helionCoder.openPanel';
+  status.command = 'helionCoder.toggleCompletion';
+  const updateStatus = () => updateCompletionStatus(status);
+  updateStatus();
   status.show();
+  const inlineCompletionProvider = new HelionInlineCompletionProvider(
+    cli,
+    status,
+    updateStatus,
+  );
 
   context.subscriptions.push(
     output,
     status,
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('helionCoder.completion.enabled')) {
+        updateStatus();
+      }
+    }),
     vscode.window.registerWebviewViewProvider(
       HelionAssistantViewProvider.viewType,
       assistantView,
@@ -43,6 +52,15 @@ export function activate(context: vscode.ExtensionContext): void {
     inlineCompletionProvider,
     vscode.commands.registerCommand('helionCoder.openPanel', () => {
       assistantView.reveal();
+    }),
+    vscode.commands.registerCommand('helionCoder.toggleCompletion', async () => {
+      const config = vscode.workspace.getConfiguration('helionCoder.completion');
+      const enabled = config.get<boolean>('enabled', true);
+      await config.update('enabled', !enabled, vscode.ConfigurationTarget.Global);
+      updateStatus();
+      void vscode.window.showInformationMessage(
+        `HelionCoder 行内补全已${enabled ? '关闭' : '开启'}。`,
+      );
     }),
     vscode.commands.registerCommand('helionCoder.ask', async () => {
       const prompt = await vscode.window.showInputBox({
@@ -70,6 +88,15 @@ export function activate(context: vscode.ExtensionContext): void {
       );
     }),
     vscode.commands.registerCommand('helionCoder.completeNow', async () => {
+      const enabled = vscode.workspace
+        .getConfiguration('helionCoder.completion')
+        .get<boolean>('enabled', true);
+      if (!enabled) {
+        void vscode.window.showWarningMessage(
+          'HelionCoder 行内补全已关闭。点击状态栏 Helion 补全可开启。',
+        );
+        return;
+      }
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }),
     vscode.commands.registerCommand('helionCoder.selectModel', async () => {
@@ -117,6 +144,18 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {}
+
+function updateCompletionStatus(status: vscode.StatusBarItem): void {
+  const enabled = vscode.workspace
+    .getConfiguration('helionCoder.completion')
+    .get<boolean>('enabled', true);
+  status.text = enabled ? '$(sparkle) Helion 补全' : '$(circle-slash) Helion 补全';
+  status.tooltip = enabled
+    ? 'HelionCoder 行内补全已开启。点击关闭。'
+    : 'HelionCoder 行内补全已关闭。点击开启。';
+  status.command = 'helionCoder.toggleCompletion';
+  status.show();
+}
 
 async function runCommandPrompt(
   cli: HelionCli,

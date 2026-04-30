@@ -313,6 +313,8 @@ async function atomicMoveToInstallPath(
     await copyFile(stagedBinaryPath, tempInstallPath)
     await chmod(tempInstallPath, 0o755)
     await rename(tempInstallPath, installPath)
+    await chmod(installPath, 0o755)
+    await clearMacOSQuarantine(installPath)
     logForDebugging(`Atomically installed binary to ${installPath}`)
   } catch (error) {
     // Clean up temp file if it exists
@@ -322,6 +324,22 @@ async function atomicMoveToInstallPath(
       // Ignore cleanup errors
     }
     throw error
+  }
+}
+
+async function clearMacOSQuarantine(targetPath: string): Promise<void> {
+  if (process.platform !== 'darwin') {
+    return
+  }
+  const result = await execFileNoThrowWithCwd('xattr', [
+    '-dr',
+    'com.apple.quarantine',
+    targetPath,
+  ])
+  if (result.code !== 0) {
+    logForDebugging(
+      `Failed to remove macOS quarantine from ${targetPath}: ${result.stderr}`,
+    )
   }
 }
 
@@ -1706,4 +1724,3 @@ export async function cleanupNpmInstallations(): Promise<{
 
   return { removed, errors, warnings }
 }
-

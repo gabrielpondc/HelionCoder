@@ -1,4 +1,5 @@
 import * as crypto from "crypto";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -360,17 +361,15 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     const promptWithAttachments = [imageContext.prompt, trimmed]
       .filter(Boolean)
       .join("\n\n");
-    const promptWithConversation = this.buildConversationPrompt(
-      promptWithAttachments,
-    );
+    const conversationContext = this.buildConversationSystemPrompt();
     const effectiveMode = planMode ? "plan" : mode;
     const promptForMode = planMode
       ? [
           "Plan mode is enabled. Do not modify files or run write operations.",
           "Return a concrete numbered implementation plan and list files you would inspect or change.",
-          promptWithConversation,
+          promptWithAttachments,
         ].join("\n\n")
-      : promptWithConversation;
+      : promptWithAttachments;
     const finalPrompt = buildContextPrompt(promptForMode, effectiveMode);
     const beforeSnapshot = await snapshotWorkspaceFiles();
 
@@ -389,6 +388,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
         thinkingMode,
         planMode,
         addDirs: imageContext.addDirs,
+        appendSystemPrompt: conversationContext,
       });
 
       if (
@@ -407,23 +407,30 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
           thinkingMode,
           planMode,
           addDirs: imageContext.addDirs,
+          appendSystemPrompt: conversationContext,
         });
       }
 
       const review = planMode
         ? undefined
         : await this.createReviewSession(beforeSnapshot);
+      const finalText = withNoWorkspaceChangeWarning(
+        result.stdout.trim(),
+        promptWithAttachments,
+        effectiveMode,
+        review,
+      );
       this.currentSessionId = result.sessionId ?? this.currentSessionId;
       await this.persistSessionId();
       await this.recordConversationTurn(
         promptWithAttachments,
-        result.stdout.trim(),
+        finalText,
       );
 
       this.post({
         type: "run-done",
         requestId,
-        text: result.stdout.trim(),
+        text: finalText,
         usage: result.usage,
         plan: planMode ? parsePlan(result.stdout) : undefined,
         review: review
@@ -459,20 +466,27 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
             thinkingMode,
             planMode,
             addDirs: imageContext.addDirs,
+            appendSystemPrompt: conversationContext,
           });
           const review = planMode
             ? undefined
             : await this.createReviewSession(beforeSnapshot);
+          const finalText = withNoWorkspaceChangeWarning(
+            result.stdout.trim(),
+            promptWithAttachments,
+            effectiveMode,
+            review,
+          );
           this.currentSessionId = result.sessionId ?? this.currentSessionId;
           await this.persistSessionId();
           await this.recordConversationTurn(
             promptWithAttachments,
-            result.stdout.trim(),
+            finalText,
           );
           this.post({
             type: "run-done",
             requestId,
-            text: result.stdout.trim(),
+            text: finalText,
             usage: result.usage,
             plan: planMode ? parsePlan(result.stdout) : undefined,
             review: review
@@ -514,16 +528,11 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private buildConversationPrompt(userPrompt: string): string {
-    const context = formatConversationContext(this.conversation, {
+  private buildConversationSystemPrompt(): string | undefined {
+    return formatConversationContext(this.conversation, {
       maxMessages: 18,
       maxChars: 32_000,
-    });
-    if (!context) {
-      return userPrompt;
-    }
-
-    return [context, "Current user request:", userPrompt].join("\n\n");
+    }) || undefined;
   }
 
   private async recordConversationTurn(
@@ -538,7 +547,10 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     });
     this.conversation.push({
       role: "assistant",
-      text: trimConversationText(assistantText, 32_000),
+      text: trimConversationText(
+        stripLeakedConversationPrompt(assistantText),
+        32_000,
+      ),
       timestamp: Date.now(),
     });
     this.conversation = trimConversationMessages(
@@ -1246,6 +1258,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
       thinkingMode?: string;
       planMode?: boolean;
       addDirs?: string[];
+      appendSystemPrompt?: string;
     } = {},
   ) {
     return await this.cli.runPrompt(prompt, {
@@ -1257,6 +1270,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
       thinkingMode: options.thinkingMode,
       planMode: options.planMode,
       addDirs: options.addDirs,
+      appendSystemPrompt: options.appendSystemPrompt,
       streamJson: true,
       onController: (controller) => {
         this.activeRunController = controller;
@@ -1658,7 +1672,10 @@ function sanitizeConversationMessages(value: unknown): HistoryMessage[] {
         record.role === "user" || record.role === "assistant"
           ? record.role
           : undefined;
-      const text = typeof record.text === "string" ? record.text.trim() : "";
+      const text =
+        typeof record.text === "string"
+          ? stripInternalPromptText(record.text)
+          : "";
       if (!role || !text) {
         return undefined;
       }
@@ -1711,6 +1728,63 @@ function trimConversationText(value: string, maxChars: number): string {
   const head = Math.max(0, Math.floor(maxChars * 0.58));
   const tail = Math.max(0, maxChars - head - 28);
   return `${text.slice(0, head)}\n\n...中间内容已省略...\n\n${text.slice(-tail)}`.trim();
+}
+
+function stripLeakedConversationPrompt(value: string): string {
+  const text = value.trim();
+  if (!text.startsWith("Previous conversation context from this VS Code assistant panel.")) {
+    return text;
+  }
+
+  const currentRequest = text.match(/\n\nCurrent user request:\s*\n/i);
+  if (currentRequest?.index !== undefined) {
+    const afterCurrentRequest = text.slice(
+      currentRequest.index + currentRequest[0].length,
+    );
+    const answerStart = afterCurrentRequest.search(/\n\n(?:#{1,6}\s|\d+[.)]\s|[-*]\s|\*\*)/);
+    if (answerStart >= 0) {
+      return afterCurrentRequest.slice(answerStart).trim();
+    }
+  }
+
+  return "";
+}
+
+function stripLeakedEditorContextPrompt(value: string): string {
+  const text = value.trim();
+  if (!text.startsWith("You are HelionCoder running inside VS Code")) {
+    return text;
+  }
+
+  const matches = Array.from(text.matchAll(/\nUser request:\s*\n/gi));
+  const marker = matches.at(-1);
+  if (!marker?.index) {
+    return "";
+  }
+
+  return text.slice(marker.index + marker[0].length).trim();
+}
+
+function stripInternalPromptText(value: string): string {
+  let text = value.trim();
+  for (let index = 0; index < 6; index += 1) {
+    const next = stripLeakedConversationPrompt(
+      stripLeakedEditorContextPrompt(text),
+    ).trim();
+    if (next === text) {
+      break;
+    }
+    text = next;
+  }
+  return text;
+}
+
+function isInternalPromptText(value: string): boolean {
+  const text = value.trim();
+  return (
+    text.startsWith("Previous conversation context from this VS Code assistant panel.") ||
+    text.startsWith("You are HelionCoder running inside VS Code")
+  );
 }
 
 function shellQuote(value: string): string {
@@ -1812,28 +1886,111 @@ function shouldCompactBeforeRetry(text: string): boolean {
   );
 }
 
-async function snapshotWorkspaceFiles(): Promise<Map<string, string>> {
-  const files = await vscode.workspace.findFiles(
-    "**/*",
-    "**/{.git,node_modules,dist,out,build,.next,coverage,vendor}/**",
-    1000,
+function withNoWorkspaceChangeWarning(
+  text: string,
+  userPrompt: string,
+  mode: string,
+  review: ReviewSession | undefined,
+): string {
+  if (
+    review ||
+    mode === "plan" ||
+    !looksLikeWorkspaceEditRequest(userPrompt)
+  ) {
+    return text;
+  }
+
+  return [
+    "**未检测到文件变更。**",
+    "",
+    "这轮回复没有实际修改工作区文件。如果回复中提到“已添加”“已创建”“已修改”某个文件，请以这条提示为准：文件没有落盘。你可以直接重试并指定目标文件，或要求我创建一个新文件。",
+    "",
+    text,
+  ].join("\n");
+}
+
+function looksLikeWorkspaceEditRequest(text: string): boolean {
+  return /(?:帮我|请|给我|实现|写一个|写个|创建|新增|添加|修改|修复|重构|补充|落到|保存到|生成).*(?:代码|函数|脚本|文件|项目|功能|测试|文档|配置|示例|程序)|(?:implement|create|add|modify|fix|refactor|write|generate|update).*(?:code|function|script|file|feature|test|docs?|config|example|program)/i.test(
+    text,
   );
+}
+
+async function snapshotWorkspaceFiles(): Promise<Map<string, string>> {
+  const files = await listSnapshotFiles();
   const snapshot = new Map<string, string>();
-  for (const uri of files) {
-    if (uri.scheme !== "file" || looksBinary(uri.fsPath)) {
+  for (const filePath of files) {
+    if (looksBinary(filePath)) {
       continue;
     }
     try {
-      const stat = fs.statSync(uri.fsPath);
+      const stat = fs.statSync(filePath);
       if (!stat.isFile() || stat.size > 1_000_000) {
         continue;
       }
-      snapshot.set(uri.fsPath, fs.readFileSync(uri.fsPath, "utf8"));
+      snapshot.set(filePath, fs.readFileSync(filePath, "utf8"));
     } catch {
       // Ignore files that disappear while the agent is running.
     }
   }
   return snapshot;
+}
+
+async function listSnapshotFiles(): Promise<string[]> {
+  const gitFiles = listGitSnapshotFiles();
+  if (gitFiles.length > 0) {
+    return gitFiles;
+  }
+
+  const uris = await vscode.workspace.findFiles(
+    "**/*",
+    "**/{.git,node_modules,dist,out,build,.next,coverage,vendor}/**",
+    5000,
+  );
+  return uris
+    .filter((uri) => uri.scheme === "file")
+    .map((uri) => uri.fsPath)
+    .filter(shouldSnapshotFile)
+    .sort();
+}
+
+function listGitSnapshotFiles(): string[] {
+  const cwd = getWorkspaceCwd();
+  try {
+    const output = execFileSync(
+      "git",
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        stdio: ["ignore", "pipe", "ignore"],
+      },
+    );
+    return output
+      .split("\0")
+      .filter(Boolean)
+      .map((relativePath) => path.resolve(cwd, relativePath))
+      .filter(shouldSnapshotFile)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+function shouldSnapshotFile(filePath: string): boolean {
+  const parts = filePath.split(path.sep);
+  return !parts.some((part) =>
+    [
+      ".git",
+      "node_modules",
+      "dist",
+      "out",
+      "build",
+      ".next",
+      "coverage",
+      "vendor",
+    ].includes(part),
+  );
 }
 
 function parsePlan(text: string): string[] {
@@ -2209,12 +2366,14 @@ function collectHistoryJsonl(
 function parseHistoryLine(line: string): HistoryEntry | undefined {
   try {
     const data = JSON.parse(line) as Record<string, unknown>;
-    const display = firstHistoryText(
-      data.display,
-      data.lastPrompt,
-      typeof data.message === "object" && data.message
-        ? (data.message as Record<string, unknown>).content
-        : undefined,
+    const display = stripInternalPromptText(
+      firstHistoryText(
+        data.display,
+        data.lastPrompt,
+        typeof data.message === "object" && data.message
+          ? (data.message as Record<string, unknown>).content
+          : undefined,
+      ) ?? "",
     );
     if (!display || isMetaHistoryText(display)) {
       return undefined;
@@ -2280,7 +2439,7 @@ function parseConversationLine(line: string): HistoryMessage | undefined {
       typeof data.message === "object" && data.message
         ? (data.message as Record<string, unknown>).content
         : undefined;
-    const text = extractHistoryContent(content);
+    const text = stripInternalPromptText(extractHistoryContent(content) ?? "");
     if (!text || isMetaHistoryText(text)) {
       return undefined;
     }
@@ -2367,6 +2526,7 @@ function parseHistoryTimestamp(value: unknown): number | undefined {
 function isMetaHistoryText(value: string): boolean {
   const text = value.trim();
   return (
+    isInternalPromptText(text) ||
     /<\/?(local-command|command-name|command-message|command-args|file-history-snapshot)/i.test(
       text,
     ) ||

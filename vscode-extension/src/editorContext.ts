@@ -68,7 +68,13 @@ export function buildContextPrompt(userPrompt: string, purpose: string): string 
   });
 
   if (!snapshot) {
-    return mentionContext ? [mentionContext, 'User request:', userPrompt].join('\n') : userPrompt;
+    return [
+      'You are HelionCoder running inside VS Code.',
+      workspaceEditInstruction(),
+      mentionContext,
+      'User request:',
+      userPrompt,
+    ].filter(Boolean).join('\n');
   }
 
   const selectionBlock = snapshot.selection
@@ -77,6 +83,7 @@ export function buildContextPrompt(userPrompt: string, purpose: string): string 
 
   return [
     `You are HelionCoder running inside VS Code. Task purpose: ${purpose}.`,
+    workspaceEditInstruction(),
     `Active file: ${snapshot.relativePath}`,
     `Language: ${snapshot.languageId}`,
     `Cursor line: ${snapshot.cursorLine}`,
@@ -113,6 +120,7 @@ export function buildCompactedContextPrompt(userPrompt: string, purpose: string)
     return [
       'You are HelionCoder running inside VS Code.',
       'The previous request exceeded the model context limit, so continue with a compact prompt.',
+      workspaceEditInstruction(),
       `Task purpose: ${purpose}.`,
       mentionContext,
       'User request:',
@@ -129,6 +137,7 @@ export function buildCompactedContextPrompt(userPrompt: string, purpose: string)
     'You are HelionCoder running inside VS Code.',
     'The previous request exceeded the model context limit. Continue with this compacted context.',
     'Preserve the user intent, avoid asking the user to retry, and state any assumptions caused by compaction.',
+    workspaceEditInstruction(),
     `Task purpose: ${purpose}.`,
     `Active file: ${snapshot.relativePath}`,
     `Language: ${snapshot.languageId}`,
@@ -147,6 +156,17 @@ export function buildCompactedContextPrompt(userPrompt: string, purpose: string)
     'User request:',
     userPrompt,
   ].filter(Boolean).join('\n');
+}
+
+function workspaceEditInstruction(): string {
+  return [
+    'When the user asks you to implement, modify, fix, refactor, document, configure, or otherwise change code, edit the actual workspace files directly.',
+    'If the user asks you to write or create a code artifact but does not name a target file, choose a sensible file path in the current workspace and create or update that file.',
+    'Do not answer with standalone code blocks for requested implementation work unless the user explicitly asks for an example, explanation-only answer, or a patch to apply manually.',
+    'Do not say that you added, created, saved, or updated code unless you actually changed a workspace file.',
+    'If you cannot determine a safe target file, ask one concise question instead of returning a full code block.',
+    'After editing files, summarize what changed and how to verify it.',
+  ].join(' ');
 }
 
 interface MentionContextOptions {
