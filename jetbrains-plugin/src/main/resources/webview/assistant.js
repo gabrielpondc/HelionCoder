@@ -477,12 +477,15 @@
       if (fileButton) {
         event.preventDefault();
         event.stopPropagation();
-        const line = Number(fileButton.getAttribute("data-step-line") || "1");
-        vscode.postMessage({
-          type: "openStepFile",
-          path: fileButton.getAttribute("data-step-file-path") || "",
-          line: Number.isFinite(line) ? line : 1,
-        });
+        openStepFile(fileButton);
+        return;
+      }
+
+      const reviewAction = event.target.closest("[data-review-action]");
+      if (reviewAction) {
+        event.preventDefault();
+        event.stopPropagation();
+        runReviewAction(reviewAction);
         return;
       }
 
@@ -989,7 +992,13 @@
       chip.className = "step-file-chip";
       chip.setAttribute("data-step-file-path", step.filePath);
       chip.setAttribute("data-step-line", String(step.lineStart ?? 1));
+      chip.setAttribute("data-step-file-label", step.fileLabel || basename(step.filePath));
       chip.title = step.filePath;
+      chip.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openStepFile(chip);
+      });
       chip.textContent = [
         step.fileLabel || basename(step.filePath),
         lineRangeLabel(step) || readableStepDetail(step),
@@ -1006,6 +1015,19 @@
       small.textContent = detail;
       extra.append(small);
     }
+  }
+
+  function openStepFile(fileButton) {
+    const line = Number(fileButton.getAttribute("data-step-line") || "1");
+    fileButton.classList.add("opening");
+    fileButton.title = "正在打开 " + (fileButton.getAttribute("data-step-file-path") || "");
+    vscode.postMessage({
+      type: "openStepFile",
+      path: fileButton.getAttribute("data-step-file-path") || "",
+      label: fileButton.getAttribute("data-step-file-label") || "",
+      line: Number.isFinite(line) ? line : 1,
+    });
+    setTimeout(() => fileButton.classList.remove("opening"), 1200);
   }
 
   function collapseRunSteps(bubble, failed = false) {
@@ -1478,6 +1500,30 @@
     ].join("");
     timeline.append(header);
 
+    if (message.historyItems && message.historyItems.length > 0) {
+      const list = document.createElement("div");
+      list.className = "recent-task-list history-task-list";
+      for (const item of message.historyItems) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "recent-task";
+        const title = document.createElement("span");
+        title.textContent = item.title || "未命名任务";
+        const meta = document.createElement("small");
+        meta.textContent = `${formatRelativeTime(item.timestamp)} · ${item.messageCount || 0} 条消息`;
+        button.append(title, meta);
+        button.addEventListener("click", () => {
+          if (item.id) {
+            vscode.postMessage({ type: "openRecentHistory", id: item.id });
+          }
+        });
+        list.append(button);
+      }
+      timeline.append(list);
+      scrollToBottom();
+      return;
+    }
+
     for (const item of message.messages || []) {
       const visibleText = cleanVisibleMessageText(item.text || "");
       if (!visibleText) {
@@ -1539,6 +1585,8 @@
       vscode.postMessage({ type: "openChanges", reviewId: review.id }),
     );
     open.className = "review-open";
+    open.dataset.reviewAction = "openChanges";
+    open.dataset.reviewId = review.id;
     bar.append(open);
 
     const files = document.createElement("details");
@@ -1566,13 +1614,17 @@
       const fileActions = document.createElement("div");
       fileActions.className = "review-file-actions";
       fileActions.append(
-        reviewButton("预览这个文件", () =>
+        reviewButton("预览这个文件", () => {
           vscode.postMessage({
             type: "openChange",
             reviewId: review.id,
             index,
-          }),
-        ),
+          });
+        }, {
+          action: "openChange",
+          reviewId: review.id,
+          index,
+        }),
       );
       body.append(text, fileActions);
       row.append(summary, body);
@@ -1583,24 +1635,57 @@
     actions.append(
       reviewButton("全部接受", () =>
         vscode.postMessage({ type: "acceptChanges", reviewId: review.id }),
-      ),
+      { action: "acceptChanges", reviewId: review.id }),
       reviewButton("预览修改", () =>
         vscode.postMessage({ type: "openChanges", reviewId: review.id }),
-      ),
+      { action: "openChanges", reviewId: review.id }),
       reviewButton("拒绝修改", () =>
         vscode.postMessage({ type: "rejectChanges", reviewId: review.id }),
-      ),
+      { action: "rejectChanges", reviewId: review.id }),
     );
     panel.append(bar, files, actions);
     bubble.append(panel);
   }
 
-  function reviewButton(text, onClick) {
+  function reviewButton(text, onClick, metadata = {}) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = text;
-    button.addEventListener("click", onClick);
+    if (metadata.action) {
+      button.dataset.reviewAction = metadata.action;
+    }
+    if (metadata.reviewId) {
+      button.dataset.reviewId = metadata.reviewId;
+    }
+    if (metadata.index !== undefined) {
+      button.dataset.reviewIndex = String(metadata.index);
+    }
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      button.classList.add("opening");
+      onClick(event);
+      setTimeout(() => button.classList.remove("opening"), 1200);
+    });
     return button;
+  }
+
+  function runReviewAction(button) {
+    const type = button.dataset.reviewAction;
+    const reviewId = button.dataset.reviewId || "";
+    if (!type || !reviewId) {
+      return;
+    }
+    button.classList.add("opening");
+    const message = { type, reviewId };
+    if (button.dataset.reviewIndex !== undefined) {
+      const index = Number(button.dataset.reviewIndex);
+      if (Number.isFinite(index)) {
+        message.index = index;
+      }
+    }
+    vscode.postMessage(message);
+    setTimeout(() => button.classList.remove("opening"), 1200);
   }
 
   function renderMarkdown(container, text) {

@@ -1,16 +1,37 @@
 :root {
-  --bg: var(--vscode-sideBar-background, #181818);
-  --panel: var(--vscode-editorWidget-background, #202020);
-  --panel-2: var(--vscode-input-background, #242424);
-  --border: var(--vscode-panel-border, #3a3a3a);
-  --border-strong: var(--vscode-focusBorder, #0e639c);
-  --text: var(--vscode-foreground, #cccccc);
-  --muted: var(--vscode-descriptionForeground, #8f8f8f);
-  --accent: var(--vscode-button-background, #0e639c);
-  --accent-text: var(--vscode-button-foreground, #ffffff);
-  --danger: var(--vscode-errorForeground, #f48771);
+  --bg: #181818;
+  --panel: #202020;
+  --panel-2: #242424;
+  --border: #3a3a3a;
+  --border-strong: #0e639c;
+  --text: #cccccc;
+  --muted: #8f8f8f;
+  --accent: #0e639c;
+  --accent-text: #ffffff;
+  --danger: #f48771;
   --radius: 8px;
-  color-scheme: dark light;
+  --vscode-sideBar-background: #181818;
+  --vscode-editor-background: #181818;
+  --vscode-editor-foreground: #d4d4d4;
+  --vscode-editorWidget-background: #1f1f1f;
+  --vscode-input-background: #1f1f1f;
+  --vscode-input-foreground: #d4d4d4;
+  --vscode-input-placeholderForeground: #8f8f8f;
+  --vscode-quickInput-background: #202020;
+  --vscode-dropdown-background: #202020;
+  --vscode-dropdown-foreground: #d4d4d4;
+  --vscode-panel-border: #3a3a3a;
+  --vscode-focusBorder: #0e639c;
+  --vscode-foreground: #d4d4d4;
+  --vscode-descriptionForeground: #9b9b9b;
+  --vscode-button-background: #0e639c;
+  --vscode-button-hoverBackground: #1177bb;
+  --vscode-button-foreground: #ffffff;
+  --vscode-toolbar-hoverBackground: rgba(255, 255, 255, 0.08);
+  --vscode-textCodeBlock-background: #151515;
+  --vscode-checkbox-border: #555555;
+  --vscode-errorForeground: #f48771;
+  color-scheme: dark;
 }
 
 * {
@@ -668,6 +689,12 @@ h1 {
   font-size: 11px;
 }
 
+.review-actions button.opening,
+.review-file-actions button.opening,
+.review-open.opening {
+  color: var(--accent);
+}
+
 .run-steps {
   margin: 0 8px 8px;
   border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
@@ -846,6 +873,11 @@ h1 {
 .step-file-chip:hover {
   color: var(--text);
   border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+}
+
+.step-file-chip.opening {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* Final header override: the assistant title is redundant inside the VS Code view. */
@@ -4278,4 +4310,94 @@ h1 {
 
 .markdown-body pre code .syntax-operator {
   color: var(--vscode-descriptionForeground, #808080);
+}
+
+/* JetBrains JCEF does not provide VS Code theme variables. Keep every copied
+   VS Code surface on the same dark palette instead of falling back to white. */
+body {
+  color: var(--text);
+  background: var(--bg);
+}
+
+.topbar,
+.timeline,
+.empty-state,
+.composer,
+.bubble,
+.menu-popover,
+.model-effort-popover,
+.model-sub-popover,
+.suggest {
+  color: var(--text);
+}
+
+.composer,
+.composer:focus-within,
+.bubble,
+.bubble.user,
+.bubble.side-question,
+.permission-card,
+.plan-card,
+.review-panel {
+  border-color: var(--border);
+  background: var(--panel);
+}
+
+.bubble.user {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.bubble-meta,
+.permission-card header,
+.plan-card header,
+.review-panel header {
+  border-color: var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.bubble-meta span:first-child,
+.bubble-body,
+.markdown-body,
+.composer textarea,
+.composer .model-effort-button,
+.composer #permissionMenu,
+.composer .steer-action,
+.composer .run-action,
+.menu-popover button {
+  color: var(--text);
+}
+
+.badge,
+.token-usage,
+.composer textarea::placeholder,
+.composer .model-effort-button span:nth-child(2),
+.composer .round-tool,
+.composer .context-ring,
+.menu-title,
+.menu-popover small {
+  color: var(--muted);
+}
+
+.composer textarea,
+.composer .attachment-tray,
+.composer .composer-actions {
+  background: transparent;
+}
+
+.composer .model-effort-button,
+.composer #permissionMenu:hover,
+.composer .steer-action:hover,
+.composer .run-action:hover,
+.composer .model-effort-button:hover,
+.menu-popover button:hover {
+  background: var(--panel-2);
+}
+
+.composer .send,
+.is-running .composer .send,
+.is-running .composer .send.is-stop {
+  background: var(--accent);
+  color: var(--accent-text);
 }

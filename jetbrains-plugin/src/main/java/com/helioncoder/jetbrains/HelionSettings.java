@@ -59,6 +59,14 @@ public final class HelionSettings {
         set("thinking", value.trim());
     }
 
+    public static boolean includeEditorContext() {
+        return Boolean.parseBoolean(get("includeEditorContext", "true"));
+    }
+
+    public static void setIncludeEditorContext(boolean value) {
+        set("includeEditorContext", Boolean.toString(value));
+    }
+
     private static @NotNull String get(@NotNull String key, @NotNull String defaultValue) {
         return PropertiesComponent.getInstance().getValue(PREFIX + key, defaultValue);
     }
@@ -67,4 +75,3 @@ public final class HelionSettings {
         PropertiesComponent.getInstance().setValue(PREFIX + key, value);
     }
 }
-

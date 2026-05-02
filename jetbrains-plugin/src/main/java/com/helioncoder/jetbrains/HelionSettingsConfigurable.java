@@ -2,6 +2,7 @@ package com.helioncoder.jetbrains;
 
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.ui.ComboBox;
+import com.intellij.ui.components.JBCheckBox;
 import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.FormBuilder;
@@ -18,6 +19,7 @@ public final class HelionSettingsConfigurable implements Configurable {
     private ComboBox<String> effort;
     private ComboBox<String> permissionMode;
     private ComboBox<String> thinking;
+    private JBCheckBox includeEditorContext;
 
     @Override
     public @Nls(capitalization = Nls.Capitalization.Title) String getDisplayName() {
@@ -32,6 +34,7 @@ public final class HelionSettingsConfigurable implements Configurable {
         effort = new ComboBox<>(new String[]{"", "low", "medium", "high", "max"});
         permissionMode = new ComboBox<>(new String[]{"default", "acceptEdits", "bypassPermissions", "dontAsk", "plan"});
         thinking = new ComboBox<>(new String[]{"", "enabled", "adaptive", "disabled"});
+        includeEditorContext = new JBCheckBox("从助手面板提问时包含活动编辑器上下文");
 
         JPanel panel = FormBuilder.createFormBuilder()
             .addLabeledComponent(new JBLabel("CLI 可执行文件"), executablePath)
@@ -40,6 +43,7 @@ public final class HelionSettingsConfigurable implements Configurable {
             .addLabeledComponent(new JBLabel("推理强度"), effort)
             .addLabeledComponent(new JBLabel("权限模式"), permissionMode)
             .addLabeledComponent(new JBLabel("思考模式"), thinking)
+            .addComponent(includeEditorContext)
             .addComponentFillVertically(new JPanel(), 0)
             .getPanel();
         reset();
@@ -53,7 +57,8 @@ public final class HelionSettingsConfigurable implements Configurable {
             || !text(model).equals(HelionSettings.model())
             || !selected(effort).equals(HelionSettings.effort())
             || !selected(permissionMode).equals(HelionSettings.permissionMode())
-            || !selected(thinking).equals(HelionSettings.thinking());
+            || !selected(thinking).equals(HelionSettings.thinking())
+            || includeEditorContext.isSelected() != HelionSettings.includeEditorContext();
     }
 
     @Override
@@ -64,6 +69,7 @@ public final class HelionSettingsConfigurable implements Configurable {
         HelionSettings.setEffort(selected(effort));
         HelionSettings.setPermissionMode(selected(permissionMode));
         HelionSettings.setThinking(selected(thinking));
+        HelionSettings.setIncludeEditorContext(includeEditorContext.isSelected());
     }
 
     @Override
@@ -74,6 +80,7 @@ public final class HelionSettingsConfigurable implements Configurable {
         effort.setSelectedItem(HelionSettings.effort());
         permissionMode.setSelectedItem(HelionSettings.permissionMode());
         thinking.setSelectedItem(HelionSettings.thinking());
+        includeEditorContext.setSelected(HelionSettings.includeEditorContext());
     }
 
     private static String text(JBTextField field) {
@@ -85,4 +92,3 @@ public final class HelionSettingsConfigurable implements Configurable {
         return value == null ? "" : value.toString();
     }
 }
-

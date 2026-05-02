@@ -2,7 +2,9 @@ package com.helioncoder.jetbrains;
 
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.Computable;
 import com.intellij.openapi.vfs.VirtualFile;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -26,6 +28,18 @@ public final class EditorContext {
     }
 
     public static @NotNull String buildPrompt(
+        @NotNull Project project,
+        @Nullable Editor editor,
+        @NotNull String userPrompt,
+        @NotNull String purpose,
+        @Nullable String compilerContext
+    ) {
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () ->
+            buildPromptUnsafe(project, editor, userPrompt, purpose, compilerContext)
+        );
+    }
+
+    private static @NotNull String buildPromptUnsafe(
         @NotNull Project project,
         @Nullable Editor editor,
         @NotNull String userPrompt,
@@ -74,11 +88,13 @@ public final class EditorContext {
     }
 
     public static @Nullable String selectedText(@Nullable Editor editor) {
-        if (editor == null) {
-            return null;
-        }
-        String selected = editor.getSelectionModel().getSelectedText();
-        return selected == null || selected.isBlank() ? null : selected;
+        return ApplicationManager.getApplication().runReadAction((Computable<String>) () -> {
+            if (editor == null) {
+                return null;
+            }
+            String selected = editor.getSelectionModel().getSelectedText();
+            return selected == null || selected.isBlank() ? null : selected;
+        });
     }
 
     private static @Nullable Snapshot snapshot(@NotNull Project project, @Nullable Editor editor) {
@@ -155,4 +171,3 @@ public final class EditorContext {
     ) {
     }
 }
-

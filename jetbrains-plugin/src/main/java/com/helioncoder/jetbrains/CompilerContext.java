@@ -34,11 +34,8 @@ public final class CompilerContext {
         for (int i = 0; i < count; i += 1) {
             CompilerMessage message = messages[i];
             String file = message.getVirtualFile() == null ? "unknown file" : message.getVirtualFile().getPath();
-            String line = message.getLine() > 0 ? ":" + message.getLine() : "";
-            String column = message.getColumn() > 0 ? ":" + message.getColumn() : "";
-            builder.append("- ").append(file).append(line).append(column).append(' ')
+            builder.append("- ").append(file).append(' ')
                 .append(message.getMessage()).append('\n');
         }
     }
 }
-
