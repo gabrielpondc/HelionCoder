@@ -186,7 +186,7 @@ jetbrains-plugin/
 
 ### 环境要求
 
-- JDK 25：`build.gradle.kts` 使用 Java toolchain 25，并把 Java 编译目标设置为 21。
+- JDK 21：`build.gradle.kts` 使用 Java toolchain 21，并把 Java 编译目标设置为 21。
 - 可访问 Maven Central、Gradle Plugin Portal 和 JetBrains IntelliJ Platform 仓库，用于下载 Gradle 插件、IDE SDK 和依赖。
 - 首次构建需要下载 IntelliJ IDEA 2025.3.3 SDK（`ideaPlatformVersion = "2025.3.3"`），耗时会比较久。
 

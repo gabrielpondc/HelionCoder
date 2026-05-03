@@ -21,13 +21,12 @@ dependencies {
     intellijPlatform {
         intellijIdea(ideaPlatformVersion)
         bundledPlugin("com.intellij.java")
-        bundledPlugin("org.jetbrains.plugins.terminal")
     }
 }
 
 java {
     toolchain {
-        languageVersion.set(JavaLanguageVersion.of(25))
+        languageVersion.set(JavaLanguageVersion.of(21))
     }
 }
 

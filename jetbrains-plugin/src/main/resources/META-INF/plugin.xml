@@ -4,8 +4,8 @@
     <vendor>GabrielPondC</vendor>
 
     <depends>com.intellij.modules.platform</depends>
-    <depends>com.intellij.java</depends>
-    <depends>org.jetbrains.plugins.terminal</depends>
+    <depends>com.intellij.modules.lang</depends>
+    <depends optional="true" config-file="com.helioncoder.jetbrains-withJava.xml">com.intellij.java</depends>
 
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow
@@ -52,12 +52,6 @@
                 class="com.helioncoder.jetbrains.actions.CompleteCodeAction"
                 text="补全当前位置"
                 icon="/icons/helion.svg"/>
-            <action
-                id="HelionCoder.MakeAndAsk"
-                class="com.helioncoder.jetbrains.actions.MakeAndAskAction"
-                text="编译项目并询问 HelionCoder"
-                icon="/icons/helion.svg"/>
-            <separator/>
             <action
                 id="HelionCoder.ConfigureExecutable"
                 class="com.helioncoder.jetbrains.actions.ConfigureExecutableAction"

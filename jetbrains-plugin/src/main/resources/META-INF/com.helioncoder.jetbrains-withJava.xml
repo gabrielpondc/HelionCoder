@@ -1,0 +1,11 @@
+<idea-plugin>
+    <actions>
+        <action
+            id="HelionCoder.MakeAndAsk"
+            class="com.helioncoder.jetbrains.actions.MakeAndAskAction"
+            text="编译项目并询问 HelionCoder"
+            icon="/icons/helion.svg">
+            <add-to-group group-id="HelionCoder.Menu" anchor="before" relative-to-action="HelionCoder.ConfigureExecutable"/>
+        </action>
+    </actions>
+</idea-plugin>
