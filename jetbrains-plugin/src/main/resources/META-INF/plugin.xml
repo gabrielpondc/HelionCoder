@@ -23,10 +23,6 @@
             displayType="BALLOON"/>
         <postStartupActivity
             implementation="com.helioncoder.jetbrains.completion.HelionCompletionStartupActivity"/>
-        <inline.completion.provider
-            id="HelionCoderInlineCompletionProvider"
-            implementation="com.helioncoder.jetbrains.completion.HelionInlineCompletionProvider"
-            order="first"/>
     </extensions>
 
     <actions>

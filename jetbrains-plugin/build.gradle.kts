@@ -34,56 +34,6 @@ tasks.withType<JavaCompile>().configureEach {
     options.release.set(21)
 }
 
-val kotlinOutputDir = layout.buildDirectory.dir("classes/kotlin/main")
-val ideaHomeProvider = providers.provider {
-    val cacheRoot = file("${System.getProperty("user.home")}/.gradle/caches")
-    cacheRoot
-        .walkTopDown()
-        .firstOrNull { it.isDirectory && it.name.startsWith("idea-$ideaPlatformVersion") }
-        ?: error("IDEA $ideaPlatformVersion SDK was not found in Gradle caches. Run gradle buildPlugin once to download it.")
-}
-val compileHelionKotlin by tasks.registering(JavaExec::class) {
-    group = "build"
-    description = "Compiles the Kotlin bridge required by the JetBrains Inline Completion API."
-    dependsOn(tasks.named("compileJava"))
-
-    val ideaHome = ideaHomeProvider.get()
-    val kotlinLib = ideaHome.resolve("plugins/Kotlin/kotlinc/lib")
-    val sources = fileTree("src/main/kotlin") {
-        include("**/*.kt")
-    }
-
-    inputs.files(sources)
-    outputs.dir(kotlinOutputDir)
-
-    classpath = files(kotlinLib.resolve("kotlin-compiler.jar"))
-    mainClass.set("org.jetbrains.kotlin.cli.jvm.K2JVMCompiler")
-    args(
-        "-jvm-target", "21",
-        "-Xjdk-release=21",
-        "-d", kotlinOutputDir.get().asFile.absolutePath,
-        "-classpath", files(
-            sourceSets.main.get().compileClasspath,
-            sourceSets.main.get().output.classesDirs,
-            kotlinLib.resolve("kotlin-stdlib.jar"),
-            kotlinLib.resolve("kotlin-stdlib-jdk7.jar"),
-            kotlinLib.resolve("kotlin-stdlib-jdk8.jar"),
-            kotlinLib.resolve("kotlinx-coroutines-core-jvm.jar")
-        ).asPath
-    )
-    args(sources.files.map { it.absolutePath })
-}
-
-sourceSets {
-    main {
-        output.dir(kotlinOutputDir, "builtBy" to compileHelionKotlin)
-    }
-}
-
-tasks.named("classes") {
-    dependsOn(compileHelionKotlin)
-}
-
 intellijPlatform {
     pluginConfiguration {
         id = "com.helioncoder.jetbrains"

@@ -31,7 +31,7 @@
 
 #### 模型与推理配置
 
-- **模型切换**：支持从内置常用模型、JetBrains 设置、环境变量、配置文件和 OpenAI 兼容 API 端点聚合模型列表，可在面板内实时切换
+- **模型切换**：支持从当前 OpenAI 兼容 API 端点、JetBrains 设置、环境变量和配置文件聚合模型列表，可在面板内实时切换
 - **推理强度**（effort）：low / medium / high / max，影响 CLI 的 `--effort` 参数
 - **思考模式**（thinking）：enabled / adaptive / disabled，控制是否展示深度思考过程
 - **权限模式**：
@@ -104,7 +104,6 @@
 
 | 来源 | 说明 |
 |---|---|
-| 内置常用模型 | GPT-5.x、Claude 系列等预定义模型 |
 | JetBrains 设置 | `Settings > Tools > HelionCoder` 中配置的模型 |
 | 环境变量 | `OPENAI_MODEL`、`ANTHROPIC_MODEL` 等 |
 | 配置文件 | `~/.helioncoder/settings.json`、项目 `.helioncoder/` 等 |
@@ -127,12 +126,12 @@
 - 编译中止状态、错误数、警告数
 - 最多 50 条错误消息和 20 条警告消息（含文件路径）
 
-### 行内补全（Inline Completion）
+### 行内补全（Ghost Completion）
 
-基于 Kotlin 实现的 JetBrains Inline Completion Provider：
+基于公开的 JetBrains Editor/Inlay API 实现灰色 ghost text 补全：
 
-- `HelionInlineCompletionProvider`：注册为平台 `inline.completion.provider` 扩展点
-- `HelionInlineCompletionInvoker`：触发行内补全请求的入口
+- `HelionCompletionEngine`：收集光标上下文、调用 CLI 并清理补全文本
+- `HelionGhostCompletionService`：监听编辑器输入、显示灰色补全预览，并用 Tab 接受建议
 
 ### 设置页
 
@@ -153,7 +152,7 @@
 ```text
 jetbrains-plugin/
 ├── README.md                         # 插件说明、开发和编译文档
-├── build.gradle.kts                  # Gradle 构建脚本，配置 IntelliJ Platform、Java 工具链和 Kotlin 桥接编译
+├── build.gradle.kts                  # Gradle 构建脚本，配置 IntelliJ Platform 和 Java 工具链
 ├── settings.gradle.kts               # Gradle 项目名称和插件仓库配置
 ├── gradle.properties                 # Gradle/IntelliJ Platform 构建属性
 ├── gradlew / gradlew.bat             # Gradle Wrapper 启动脚本
@@ -162,14 +161,15 @@ jetbrains-plugin/
 │   ├── CompilerContext.java          # 收集项目编译/构建上下文
 │   ├── EditorContext.java            # 收集当前编辑器、选区和文件上下文
 │   ├── HelionCli.java                # 定位并调用 helion-coder CLI，处理 stream-json 事件流
-│   ├── HelionModelResolver.java      # 汇总内置、配置、环境变量、文件和 API 模型列表
+│   ├── HelionModelResolver.java      # 汇总 API、配置、环境变量和文件模型列表
 │   ├── HelionSettings.java           # 插件持久化设置
 │   ├── HelionSettingsConfigurable.java # Settings | Tools | HelionCoder 设置页
 │   ├── HelionToolWindowFactory.java  # 右侧助手 Tool Window、JCEF WebView 和前后端消息桥
 │   └── actions/                      # Tools 菜单动作：打开面板、提问、解释选区、编译并提问、配置 CLI、补全
-├── src/main/kotlin/com/helioncoder/jetbrains/completion/
-│   ├── HelionInlineCompletionInvoker.kt  # 触发 JetBrains Inline Completion
-│   └── HelionInlineCompletionProvider.kt # 行内补全 Provider
+├── src/main/java/com/helioncoder/jetbrains/completion/
+│   ├── HelionCompletionEngine.java       # 补全上下文、提示词和结果清理
+│   ├── HelionCompletionStartupActivity.java # 安装 ghost completion 服务
+│   └── HelionGhostCompletionService.java # 灰色 ghost text 预览和 Tab 接受逻辑
 └── src/main/resources/
     ├── META-INF/plugin.xml           # 插件声明：actions、toolWindow、settings、服务和扩展点
     ├── META-INF/pluginIcon.svg       # 浅色主题插件图标
@@ -217,7 +217,7 @@ build/distributions/
 ### 常用构建命令
 
 ```bash
-# 只编译 Java/Kotlin class
+# 只编译 Java class
 ./gradlew classes
 
 # 完整构建和检查
@@ -227,22 +227,9 @@ build/distributions/
 gradle wrapper --gradle-version 8.14.3
 ```
 
-### Kotlin 行内补全桥接说明
+### Marketplace 兼容说明
 
-项目没有使用 Kotlin Gradle 插件，而是在 `build.gradle.kts` 中注册了 `compileHelionKotlin` 任务：
-
-1. 先执行 `compileJava`。
-2. 从 Gradle 缓存里的 IntelliJ IDEA SDK 查找 Kotlin 编译器：`plugins/Kotlin/kotlinc/lib`。
-3. 编译 `src/main/kotlin/**/*.kt` 到 `build/classes/kotlin/main`。
-4. `classes` 任务依赖 `compileHelionKotlin`，所以执行 `./gradlew classes`、`./gradlew build` 或 `./gradlew buildPlugin` 都会自动编译 Kotlin 桥接代码。
-
-如果首次运行时提示找不到 `IDEA 2025.3.3 SDK`，先执行一次：
-
-```bash
-./gradlew buildPlugin
-```
-
-让 IntelliJ Platform Gradle 插件下载 IDE SDK 后再重试。
+插件不注册 JetBrains 私有或 Internal 的行内补全扩展点。行内补全预览通过公开的 Editor/Inlay API 实现，以便通过 JetBrains Marketplace 的 Internal API 检查。
 
 ## 说明
 

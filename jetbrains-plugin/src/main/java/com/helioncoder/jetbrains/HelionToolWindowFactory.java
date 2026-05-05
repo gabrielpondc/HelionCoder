@@ -100,6 +100,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
         private Future<?> currentTask;
         private String currentRequestId;
         private String currentSessionId;
+        private volatile boolean autoModelRefreshStarted;
         private final StringBuilder outputLog = new StringBuilder();
         private final Map<String, List<ReviewChange>> reviews = new HashMap<>();
         private final Map<String, ConversationRecord> conversations = new LinkedHashMap<>();
@@ -124,7 +125,10 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             }
 
             switch (type) {
-                case "ready" -> postContext();
+                case "ready" -> {
+                    postContext();
+                    refreshModelsOnFirstReady();
+                }
                 case "ask" -> runAssistantPrompt(
                     coalesce(extract(PROMPT_PATTERN, rawMessage), ""),
                     coalesce(extract(MODE_PATTERN, rawMessage), "ask"),
@@ -838,6 +842,18 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 }
             }
             return true;
+        }
+
+        private void refreshModelsOnFirstReady() {
+            if (autoModelRefreshStarted) {
+                return;
+            }
+            autoModelRefreshStarted = true;
+            ApplicationManager.getApplication().executeOnPooledThread(() -> {
+                modelResolver.invalidate();
+                modelResolver.listModels(true);
+                ApplicationManager.getApplication().invokeLater(this::postContext);
+            });
         }
 
         private static @NotNull String modelsJson(@NotNull List<HelionModelResolver.ModelCandidate> models) {

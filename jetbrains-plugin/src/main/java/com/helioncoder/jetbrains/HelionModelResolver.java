@@ -57,7 +57,6 @@ public final class HelionModelResolver {
             defaultModel.source(),
             "不传 --model，让 HelionCoder CLI 按当前配置解析默认模型。"
         ));
-        addBuiltInModels(models);
 
         if (refreshApi) {
             models.addAll(fetchApiModels());
@@ -76,35 +75,6 @@ public final class HelionModelResolver {
         }
         cachedModels = deduped;
         return deduped;
-    }
-
-    private void addBuiltInModels(@NotNull List<ModelCandidate> models) {
-        for (String id : List.of(
-            "gpt-5.4",
-            "gpt-5.4-codex",
-            "gpt-5.4-mini",
-            "gpt-5.2",
-            "gpt-5.2-codex",
-            "gpt-5.2-mini",
-            "gpt-5.1",
-            "gpt-5.1-codex",
-            "gpt-5.1-mini",
-            "gpt-5",
-            "gpt-5-codex",
-            "gpt-5-mini",
-            "gpt-4.1",
-            "gpt-4.1-mini",
-            "o4-mini",
-            "o3",
-            "claude-opus-4-6-20260417",
-            "claude-sonnet-4-6-20260415",
-            "claude-haiku-4-5-20251001",
-            "claude-opus-4-1-20250805",
-            "claude-sonnet-4-5-20250929",
-            "claude-3-7-sonnet-20250219"
-        )) {
-            models.add(new ModelCandidate(id, id, "常用模型", "内置常用模型，可直接传给 HelionCoder CLI。"));
-        }
     }
 
     private void addConfiguredModels(@NotNull List<ModelCandidate> models) {
