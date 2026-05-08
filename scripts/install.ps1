@@ -16,6 +16,26 @@ function Write-Step {
   Write-Host "==> $Message"
 }
 
+function Test-PathListContains {
+  param(
+    [string]$PathValue,
+    [string]$Directory
+  )
+
+  if ([string]::IsNullOrWhiteSpace($PathValue) -or [string]::IsNullOrWhiteSpace($Directory)) {
+    return $false
+  }
+
+  $normalized = $Directory.TrimEnd("\")
+  foreach ($part in ($PathValue -split ";")) {
+    if (-not [string]::IsNullOrWhiteSpace($part) -and $part.TrimEnd("\") -ieq $normalized) {
+      return $true
+    }
+  }
+
+  return $false
+}
+
 function Get-InstallArch {
   $machine = $env:PROCESSOR_ARCHITEW6432
   if ([string]::IsNullOrWhiteSpace($machine)) {
@@ -37,17 +57,162 @@ function Add-UserPath {
   $current = [Environment]::GetEnvironmentVariable("Path", "User")
   if ([string]::IsNullOrWhiteSpace($current)) {
     [Environment]::SetEnvironmentVariable("Path", $Directory, "User")
-    $env:Path = "$env:Path;$Directory"
+  } elseif (-not (Test-PathListContains -PathValue $current -Directory $Directory)) {
+    $parts = $current -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    [Environment]::SetEnvironmentVariable("Path", ($parts + $Directory) -join ";", "User")
+  }
+
+  if (-not (Test-PathListContains -PathValue $env:Path -Directory $Directory)) {
+    if ([string]::IsNullOrWhiteSpace($env:Path)) {
+      $env:Path = $Directory
+    } else {
+      $env:Path = "$env:Path;$Directory"
+    }
+  }
+}
+
+function Test-CommandAvailable {
+  param([string]$Name)
+  return $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
+}
+
+function Get-GitVersion {
+  if (-not (Test-CommandAvailable -Name "git")) {
+    return $null
+  }
+
+  try {
+    $output = & git --version 2>$null | Select-Object -First 1
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($output)) {
+      return $output
+    }
+  } catch {
+    return $null
+  }
+
+  return $null
+}
+
+function Get-GitPathDirectories {
+  $candidates = @()
+  $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+  if ($gitCommand -and $gitCommand.Source) {
+    $candidates += (Split-Path -Parent $gitCommand.Source)
+  }
+
+  $gitRoots = @()
+  if (-not [string]::IsNullOrWhiteSpace($env:ProgramFiles)) {
+    $gitRoots += (Join-Path $env:ProgramFiles "Git")
+  }
+
+  $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+  if (-not [string]::IsNullOrWhiteSpace($programFilesX86)) {
+    $gitRoots += (Join-Path $programFilesX86 "Git")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+    $gitRoots += (Join-Path $env:LOCALAPPDATA "Programs\Git")
+  }
+
+  foreach ($root in $gitRoots) {
+    $gitCmd = Join-Path $root "cmd"
+    $gitBin = Join-Path $root "bin"
+    if (Test-Path (Join-Path $gitCmd "git.exe")) {
+      $candidates += $gitCmd
+    } elseif (Test-Path (Join-Path $gitBin "git.exe")) {
+      $candidates += $gitBin
+    }
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:ProgramData)) {
+    $candidates += (Join-Path $env:ProgramData "chocolatey\bin")
+  }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+    $candidates += (Join-Path $env:USERPROFILE "scoop\shims")
+  }
+
+  $seen = @{}
+  foreach ($candidate in $candidates) {
+    if ([string]::IsNullOrWhiteSpace($candidate)) {
+      continue
+    }
+
+    if (-not (Test-Path (Join-Path $candidate "git.exe"))) {
+      continue
+    }
+
+    $key = $candidate.TrimEnd("\").ToLowerInvariant()
+    if (-not $seen.ContainsKey($key)) {
+      $seen[$key] = $true
+      Write-Output $candidate
+    }
+  }
+}
+
+function Add-GitToPath {
+  $gitDirs = @(Get-GitPathDirectories)
+  foreach ($gitDir in $gitDirs) {
+    Add-UserPath -Directory $gitDir
+    Write-Step "Windows user PATH includes Git: $gitDir"
+  }
+}
+
+function Install-Git {
+  if (Test-CommandAvailable -Name "winget") {
+    Write-Step "Git not found. Installing Git for Windows with winget."
+    & winget install --id Git.Git --exact --source winget --accept-package-agreements --accept-source-agreements --silent
+    if ($LASTEXITCODE -ne 0) {
+      throw "winget failed to install Git (exit code $LASTEXITCODE)."
+    }
     return
   }
 
-  $parts = $current -split ";" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-  if ($parts -contains $Directory) {
+  if (Test-CommandAvailable -Name "choco") {
+    Write-Step "Git not found. Installing Git for Windows with Chocolatey."
+    & choco install git -y --no-progress
+    if ($LASTEXITCODE -ne 0) {
+      throw "Chocolatey failed to install Git (exit code $LASTEXITCODE)."
+    }
     return
   }
 
-  [Environment]::SetEnvironmentVariable("Path", ($parts + $Directory) -join ";", "User")
-  $env:Path = "$env:Path;$Directory"
+  if (Test-CommandAvailable -Name "scoop") {
+    Write-Step "Git not found. Installing Git for Windows with Scoop."
+    & scoop install git
+    if ($LASTEXITCODE -ne 0) {
+      throw "Scoop failed to install Git (exit code $LASTEXITCODE)."
+    }
+    return
+  }
+
+  throw "Git is required, but git was not found and no supported installer was found. Install winget, Chocolatey, Scoop, or Git for Windows, then rerun this installer."
+}
+
+function Ensure-Git {
+  $gitVersion = Get-GitVersion
+  if ($gitVersion) {
+    Write-Step "Git detected: $gitVersion"
+    return
+  }
+
+  Write-Step "Git not found on PATH. Checking common Git install paths."
+  Add-GitToPath
+  $gitVersion = Get-GitVersion
+  if ($gitVersion) {
+    Write-Step "Git found and added to PATH: $gitVersion"
+    return
+  }
+
+  Install-Git
+  Add-GitToPath
+
+  $gitVersion = Get-GitVersion
+  if (-not $gitVersion) {
+    throw "Git was installed, but git.exe is still not available on PATH. Open a new terminal or add Git to PATH, then rerun this installer."
+  }
+
+  Write-Step "Git installed: $gitVersion"
 }
 
 $DetectedArch = Get-InstallArch
@@ -74,9 +239,16 @@ Write-Step "Install path: $Target"
 
 if ($env:HELION_INSTALL_DRY_RUN -eq "1") {
   Write-Step "Download URL: $DownloadUrl"
+  $GitVersion = Get-GitVersion
+  if ($GitVersion) {
+    Write-Step "Git: $GitVersion"
+  } else {
+    Write-Step "Git: missing; would install Git before HelionCoder"
+  }
   exit 0
 }
 
+Ensure-Git
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 $TempFile = Join-Path ([System.IO.Path]::GetTempPath()) "$Asset.$([Guid]::NewGuid().ToString('N')).download"
 
