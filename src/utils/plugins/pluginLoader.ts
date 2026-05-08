@@ -104,6 +104,10 @@ import {
 import { getPluginSeedDirs, getPluginsDirectory } from './pluginDirectories.js'
 import { parsePluginIdentifier } from './pluginIdentifier.js'
 import { validatePathWithinBase } from './pluginInstallationHelpers.js'
+import {
+  findPluginManifestPath,
+  normalizePluginManifestDirectories,
+} from './pluginManifestPaths.js'
 import { calculatePluginVersion } from './pluginVersioning.js'
 import {
   type CommandMetadata,
@@ -438,6 +442,8 @@ export async function copyPluginToVersionedCache(
     )
     await copyDir(sourcePath, cachePath)
   }
+
+  await normalizePluginManifestDirectories(cachePath)
 
   // Remove .git directory from cache if present
   const gitPath = join(cachePath, '.git')
@@ -976,7 +982,9 @@ export async function cachePlugin(
     throw error
   }
 
-  const manifestPath = join(tempPath, '.claude-plugin', 'plugin.json')
+  await normalizePluginManifestDirectories(tempPath)
+
+  const manifestPath = await findPluginManifestPath(tempPath, 'plugin.json')
   const legacyManifestPath = join(tempPath, 'plugin.json')
   let manifest: PluginManifest
 
@@ -1356,7 +1364,7 @@ export async function createPluginFromPath(
 
   // Step 1: Load or create the plugin manifest
   // This provides metadata about the plugin (name, version, etc.)
-  const manifestPath = join(pluginPath, '.claude-plugin', 'plugin.json')
+  const manifestPath = await findPluginManifestPath(pluginPath, 'plugin.json')
   const manifest = await loadPluginManifest(manifestPath, fallbackName, source)
 
   // Step 2: Create the base plugin object
@@ -2148,6 +2156,7 @@ async function loadPluginFromMarketplaceEntryCacheOnly(
     )
     try {
       await extractZipToDirectory(pluginPath, extractDir)
+      await normalizePluginManifestDirectories(extractDir)
       pluginPath = extractDir
     } catch (error) {
       logForDebugging(`Failed to extract plugin ZIP ${pluginPath}: ${error}`, {
@@ -2227,9 +2236,8 @@ async function loadPluginFromMarketplaceEntry(
     // Always copy local plugins to versioned cache
     try {
       // Try to load manifest from plugin directory to check for version field first
-      const manifestPath = join(
+      const manifestPath = await findPluginManifestPath(
         sourcePluginPath,
-        '.claude-plugin',
         'plugin.json',
       )
       let pluginManifest: PluginManifest | undefined
@@ -2388,6 +2396,7 @@ async function loadPluginFromMarketplaceEntry(
     )
     try {
       await extractZipToDirectory(pluginPath, extractDir)
+      await normalizePluginManifestDirectories(extractDir)
       logForDebugging(`Extracted plugin ZIP to session dir: ${extractDir}`)
       pluginPath = extractDir
     } catch (error) {
@@ -2427,7 +2436,7 @@ async function finishLoadingPluginFromPath(
   const errors: PluginError[] = []
 
   // Check if plugin.json exists to determine if we should use marketplace manifest
-  const manifestPath = join(pluginPath, '.claude-plugin', 'plugin.json')
+  const manifestPath = await findPluginManifestPath(pluginPath, 'plugin.json')
   const hasManifest = await pathExists(manifestPath)
 
   const { plugin, errors: pluginErrors } = await createPluginFromPath(
@@ -3300,4 +3309,3 @@ export function cachePluginSettings(plugins: LoadedPlugin[]): void {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
-

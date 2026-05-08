@@ -17,6 +17,7 @@ import { logEvent } from '../../services/analytics/index.js'
 import { logForDebugging } from '../debug.js'
 import { parseZipModes, unzipFile } from '../dxt/zip.js'
 import { errorMessage, getErrnoCode } from '../errors.js'
+import { normalizePluginManifestDirectories } from './pluginManifestPaths.js'
 
 type SafeString = AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS
 
@@ -135,6 +136,7 @@ export async function fetchOfficialMarketplaceFromGcs(
         await chmod(dest, mode & 0o777).catch(() => {})
       }
     }
+    await normalizePluginManifestDirectories(staging)
     await writeFile(join(staging, '.gcs-sha'), sha)
 
     // Atomic swap: rm old, rename staging. Brief window where installLocation
@@ -214,4 +216,3 @@ export function classifyGcsError(e: unknown): string {
   if (/empty body/.test(msg)) return 'empty_latest'
   return 'other'
 }
-

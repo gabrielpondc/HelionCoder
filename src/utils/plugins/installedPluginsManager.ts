@@ -53,6 +53,10 @@ import {
   parsePluginIdentifier,
   settingSourceToScope,
 } from './pluginIdentifier.js'
+import {
+  PLUGIN_MANIFEST_DIRS,
+  getPluginManifestPathCandidates,
+} from './pluginManifestPaths.js'
 import { getPluginCachePath, getVersionedCachePath } from './pluginLoader.js'
 
 // Migration state to prevent running migration multiple times per session
@@ -1012,16 +1016,22 @@ function getPluginVersionFromManifest(
   pluginId: string,
 ): string {
   const fs = getFsImplementation()
-  const manifestPath = join(pluginCachePath, '.claude-plugin', 'plugin.json')
-
-  try {
-    const manifestContent = fs.readFileSync(manifestPath, { encoding: 'utf-8' })
-    const manifest = jsonParse(manifestContent)
-    return manifest.version || 'unknown'
-  } catch {
-    logForDebugging(`Could not read version from manifest for ${pluginId}`)
-    return 'unknown'
+  for (const manifestPath of getPluginManifestPathCandidates(
+    pluginCachePath,
+    'plugin.json',
+  )) {
+    try {
+      const manifestContent = fs.readFileSync(manifestPath, {
+        encoding: 'utf-8',
+      })
+      const manifest = jsonParse(manifestContent)
+      return manifest.version || 'unknown'
+    } catch {
+      // Try the next supported manifest directory name.
+    }
   }
+  logForDebugging(`Could not read version from manifest for ${pluginId}`)
+  return 'unknown'
 }
 
 /**
@@ -1220,8 +1230,8 @@ export async function migrateFromEnabledPlugins(): Promise<void> {
 
           installPath = pluginCachePath
 
-          // Only read manifest if the .claude-plugin dir is present
-          if (dirEntries.includes('.claude-plugin')) {
+          // Only read manifest if a supported plugin manifest dir is present
+          if (PLUGIN_MANIFEST_DIRS.some(dir => dirEntries.includes(dir))) {
             version = getPluginVersionFromManifest(pluginCachePath, pluginId)
           }
 
@@ -1266,4 +1276,3 @@ export async function migrateFromEnabledPlugins(): Promise<void> {
     )
   }
 }
-

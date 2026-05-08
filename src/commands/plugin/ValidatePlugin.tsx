@@ -23,7 +23,7 @@ export function ValidatePlugin(t0) {
     t1 = () => {
       const runValidation = async function runValidation() {
         if (!path) {
-          onComplete("用法：/plugin validate <路径>\n\n验证插件或 marketplace manifest 文件/目录。\n\n示例：\n  /plugin validate .claude-plugin/plugin.json\n  /plugin validate /path/to/plugin-directory\n  /plugin validate .\n\n传入目录时会自动验证 .claude-plugin/marketplace.json 或 .claude-plugin/plugin.json（两者都存在时优先 marketplace）。\n\n也可从命令行运行：\n  helioncoder plugin validate <路径>");
+          onComplete("用法：/plugin validate <路径>\n\n验证插件或 marketplace manifest 文件/目录。\n\n示例：\n  /plugin validate .helion-plugin/plugin.json\n  /plugin validate /path/to/plugin-directory\n  /plugin validate .\n\n传入目录时会自动验证 .helion-plugin/marketplace.json 或 .helion-plugin/plugin.json（两者都存在时优先 marketplace；旧 .claude-plugin 仍兼容）。\n\n也可从命令行运行：\n  helioncoder plugin validate <路径>");
           return;
         }
         ;

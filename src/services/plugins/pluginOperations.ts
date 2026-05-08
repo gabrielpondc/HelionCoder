@@ -54,6 +54,7 @@ import {
   loadAllPlugins,
   loadPluginManifest,
 } from '../../utils/plugins/pluginLoader.js'
+import { findPluginManifestPath } from '../../utils/plugins/pluginManifestPaths.js'
 import { deletePluginOptions } from '../../utils/plugins/pluginOptionsStorage.js'
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js'
 import { getPluginEditableScopes } from '../../utils/plugins/pluginStartupCheck.js'
@@ -986,7 +987,7 @@ async function performPluginUpdate({
 
     // Try to load manifest from plugin directory (for version info)
     let pluginManifest: PluginManifest | undefined
-    const manifestPath = join(sourcePath, '.claude-plugin', 'plugin.json')
+    const manifestPath = await findPluginManifestPath(sourcePath, 'plugin.json')
     try {
       pluginManifest = await loadPluginManifest(
         manifestPath,
@@ -1086,4 +1087,3 @@ async function performPluginUpdate({
     }
   }
 }
-

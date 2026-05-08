@@ -24,3 +24,11 @@ export const OFFICIAL_MARKETPLACE_SOURCE = {
  */
 export const OFFICIAL_MARKETPLACE_NAME = 'claude-plugins-official'
 
+/**
+ * Local cache directory name for the official marketplace.
+ *
+ * The upstream marketplace still comes from anthropics/claude-plugins-official;
+ * this only controls the Helion-branded on-disk folder under
+ * ~/.helioncoder/plugins/marketplaces/.
+ */
+export const OFFICIAL_MARKETPLACE_CACHE_DIR_NAME = 'helion-plugin-offical'

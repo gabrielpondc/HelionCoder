@@ -7,6 +7,11 @@ import { FRONTMATTER_REGEX } from '../frontmatterParser.js'
 import { jsonParse } from '../slowOperations.js'
 import { parseYaml } from '../yaml.js'
 import {
+  HELION_PLUGIN_MANIFEST_DIR,
+  getPluginManifestPathCandidates,
+  isPluginManifestDirName,
+} from './pluginManifestPaths.js'
+import {
   PluginHooksSchema,
   PluginManifestSchema,
   PluginMarketplaceEntrySchema,
@@ -61,8 +66,8 @@ function detectManifestType(
   if (fileName === 'plugin.json') return 'plugin'
   if (fileName === 'marketplace.json') return 'marketplace'
 
-  // Check if it's in .claude-plugin directory
-  if (dirName === '.claude-plugin') {
+  // Check if it's in a supported plugin manifest directory
+  if (isPluginManifestDirName(dirName)) {
     return 'plugin' // Most likely plugin.json
   }
 
@@ -446,10 +451,9 @@ export async function validateMarketplaceManifest(
       // shows one version, /status shows another after install).
       // Only local sources: remote sources would need cloning to check.
       const manifestDir = path.dirname(absolutePath)
-      const marketplaceRoot =
-        path.basename(manifestDir) === '.claude-plugin'
-          ? path.dirname(manifestDir)
-          : manifestDir
+      const marketplaceRoot = isPluginManifestDirName(path.basename(manifestDir))
+        ? path.dirname(manifestDir)
+        : manifestDir
       for (const [i, entry] of marketplace.plugins.entries()) {
         if (
           !entry.version ||
@@ -458,28 +462,32 @@ export async function validateMarketplaceManifest(
         ) {
           continue
         }
-        const pluginJsonPath = path.join(
-          marketplaceRoot,
-          entry.source,
-          '.claude-plugin',
+        const pluginJsonPaths = getPluginManifestPathCandidates(
+          path.join(marketplaceRoot, entry.source),
           'plugin.json',
         )
         let manifestVersion: string | undefined
-        try {
-          const raw = await readFile(pluginJsonPath, { encoding: 'utf-8' })
-          const parsed = jsonParse(raw) as { version?: unknown }
-          if (typeof parsed.version === 'string') {
-            manifestVersion = parsed.version
+        for (const pluginJsonPath of pluginJsonPaths) {
+          try {
+            const raw = await readFile(pluginJsonPath, { encoding: 'utf-8' })
+            const parsed = jsonParse(raw) as { version?: unknown }
+            if (typeof parsed.version === 'string') {
+              manifestVersion = parsed.version
+            }
+            break
+          } catch {
+            // Missing/unreadable plugin.json is someone else's error to report
+            continue
           }
-        } catch {
-          // Missing/unreadable plugin.json is someone else's error to report
+        }
+        if (!manifestVersion) {
           continue
         }
         if (manifestVersion && manifestVersion !== entry.version) {
           warnings.push({
             path: `plugins[${i}].version`,
             message:
-              `Entry declares version "${entry.version}" but ${entry.source}/.claude-plugin/plugin.json says "${manifestVersion}". ` +
+              `Entry declares version "${entry.version}" but ${entry.source}/${HELION_PLUGIN_MANIFEST_DIR}/plugin.json says "${manifestVersion}". ` +
               `At install time, plugin.json wins (calculatePluginVersion precedence) — the entry version is silently ignored. ` +
               `Update this entry to "${manifestVersion}" to match.`,
           })
@@ -827,23 +835,28 @@ export async function validateManifest(
   }
 
   if (stats?.isDirectory()) {
-    // Look for manifest files in .claude-plugin directory
+    // Look for manifest files in supported plugin manifest directories.
     // Prefer marketplace.json over plugin.json
-    const marketplacePath = path.join(
+    for (const marketplacePath of getPluginManifestPathCandidates(
       absolutePath,
-      '.claude-plugin',
       'marketplace.json',
-    )
-    const marketplaceResult = await validateMarketplaceManifest(marketplacePath)
-    // Only fall through if the marketplace file was not found (ENOENT)
-    if (marketplaceResult.errors[0]?.code !== 'ENOENT') {
-      return marketplaceResult
+    )) {
+      const marketplaceResult =
+        await validateMarketplaceManifest(marketplacePath)
+      // Only fall through if the marketplace file was not found (ENOENT)
+      if (marketplaceResult.errors[0]?.code !== 'ENOENT') {
+        return marketplaceResult
+      }
     }
 
-    const pluginPath = path.join(absolutePath, '.claude-plugin', 'plugin.json')
-    const pluginResult = await validatePluginManifest(pluginPath)
-    if (pluginResult.errors[0]?.code !== 'ENOENT') {
-      return pluginResult
+    for (const pluginPath of getPluginManifestPathCandidates(
+      absolutePath,
+      'plugin.json',
+    )) {
+      const pluginResult = await validatePluginManifest(pluginPath)
+      if (pluginResult.errors[0]?.code !== 'ENOENT') {
+        return pluginResult
+      }
     }
 
     return {
@@ -851,7 +864,7 @@ export async function validateManifest(
       errors: [
         {
           path: 'directory',
-          message: `No manifest found in directory. Expected .claude-plugin/marketplace.json or .claude-plugin/plugin.json`,
+          message: `No manifest found in directory. Expected ${HELION_PLUGIN_MANIFEST_DIR}/marketplace.json or ${HELION_PLUGIN_MANIFEST_DIR}/plugin.json`,
         },
       ],
       warnings: [],
@@ -901,4 +914,3 @@ export async function validateManifest(
     }
   }
 }
-

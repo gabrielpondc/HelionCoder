@@ -1,6 +1,6 @@
 {
   "name": "helion-coder",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "HelionCoder CLI powered by OpenAI-compatible APIs.",
   "license": "UNLICENSED",
   "private": true,

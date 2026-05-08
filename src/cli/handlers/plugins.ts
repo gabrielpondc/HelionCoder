@@ -50,6 +50,7 @@ import {
   scopeToSettingSource,
 } from '../../utils/plugins/pluginIdentifier.js'
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js'
+import { isPluginManifestDirName } from '../../utils/plugins/pluginManifestPaths.js'
 import type { PluginSource } from '../../utils/plugins/schemas.js'
 import {
   type ValidationResult,
@@ -111,14 +112,14 @@ export async function pluginValidateHandler(
     console.log(`正在验证 ${result.fileType} manifest：${result.filePath}\n`)
     printValidationResult(result)
 
-    // If this is a plugin manifest located inside a .claude-plugin directory,
+    // If this is a plugin manifest located inside a plugin manifest directory,
     // also validate the plugin's content files (skills, agents, commands,
     // hooks). Works whether the user passed a directory or the plugin.json
     // path directly.
     let contentResults: ValidationResult[] = []
     if (result.fileType === 'plugin') {
       const manifestDir = dirname(result.filePath)
-      if (basename(manifestDir) === '.claude-plugin') {
+      if (isPluginManifestDirName(basename(manifestDir))) {
         contentResults = await validatePluginContents(dirname(manifestDir))
         for (const r of contentResults) {
           // biome-ignore lint/suspicious/noConsole:: intentional console output
@@ -877,4 +878,3 @@ export async function pluginUpdateHandler(
 
   await updatePluginCli(plugin, scope)
 }
-

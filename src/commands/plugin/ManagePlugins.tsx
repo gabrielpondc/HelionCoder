@@ -38,6 +38,7 @@ import { getPluginDataDirSize, pluginDataDirPath } from '../../utils/plugins/plu
 import { getFlaggedPlugins, markFlaggedPluginsSeen, removeFlaggedPlugin } from '../../utils/plugins/pluginFlagging.js';
 import { type PersistablePluginScope, parsePluginIdentifier } from '../../utils/plugins/pluginIdentifier.js';
 import { loadAllPlugins } from '../../utils/plugins/pluginLoader.js';
+import { getPluginManifestPathCandidates } from '../../utils/plugins/pluginManifestPaths.js';
 import { loadPluginOptions, type PluginOptionSchema, savePluginOptions } from '../../utils/plugins/pluginOptionsStorage.js';
 import { isPluginBlockedByPolicy } from '../../utils/plugins/pluginPolicy.js';
 import { getPluginEditableScopes } from '../../utils/plugins/pluginStartupCheck.js';
@@ -837,15 +838,24 @@ export function ManagePlugins({
       if (!hasMcpb) {
         try {
           const marketplaceDir = path.join(selectedPlugin!.plugin.path, '..');
-          const marketplaceJsonPath = path.join(marketplaceDir, '.claude-plugin', 'marketplace.json');
-          const content = await fs.readFile(marketplaceJsonPath, 'utf-8');
-          const marketplace_1 = jsonParse(content);
-          const entry_0 = marketplace_1.plugins?.find((p: {
-            name: string;
-          }) => p.name === selectedPlugin!.plugin.name);
-          if (entry_0?.mcpServers) {
-            const spec = entry_0.mcpServers;
-            hasMcpb = typeof spec === 'string' && isMcpbSource(spec) || Array.isArray(spec) && spec.some((s_3: unknown) => typeof s_3 === 'string' && isMcpbSource(s_3));
+          let content: string | undefined;
+          for (const marketplaceJsonPath of getPluginManifestPathCandidates(marketplaceDir, 'marketplace.json')) {
+            try {
+              content = await fs.readFile(marketplaceJsonPath, 'utf-8');
+              break;
+            } catch {
+              // Try the next supported manifest directory.
+            }
+          }
+          if (content) {
+            const marketplace_1 = jsonParse(content);
+            const entry_0 = marketplace_1.plugins?.find((p: {
+              name: string;
+            }) => p.name === selectedPlugin!.plugin.name);
+            if (entry_0?.mcpServers) {
+              const spec = entry_0.mcpServers;
+              hasMcpb = typeof spec === 'string' && isMcpbSource(spec) || Array.isArray(spec) && spec.some((s_3: unknown) => typeof s_3 === 'string' && isMcpbSource(s_3));
+            }
           }
         } catch (err) {
           logForDebugging(`Failed to read raw marketplace.json: ${err}`);

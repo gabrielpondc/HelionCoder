@@ -34,6 +34,7 @@ import {
   toError,
 } from '../errors.js'
 import { execFileNoThrow, execFileNoThrowWithCwd } from '../execFileNoThrow.js'
+import { pathExists } from '../file.js'
 import { getFsImplementation } from '../fsOperations.js'
 import { gitExe } from '../git.js'
 import { logError } from '../log.js'
@@ -64,10 +65,16 @@ import {
   isSourceInBlocklist,
 } from './marketplaceHelpers.js'
 import {
+  OFFICIAL_MARKETPLACE_CACHE_DIR_NAME,
   OFFICIAL_MARKETPLACE_NAME,
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
 import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
+import {
+  findPluginManifestPath,
+  getPreferredPluginManifestPath,
+  normalizePluginManifestDirectories,
+} from './pluginManifestPaths.js'
 import {
   deletePluginDataDir,
   getPluginSeedDirs,
@@ -109,6 +116,34 @@ function getKnownMarketplacesFile(): string {
  */
 export function getMarketplacesCacheDir(): string {
   return join(getPluginsDirectory(), 'marketplaces')
+}
+
+export function getOfficialMarketplaceCachePath(): string {
+  return join(getMarketplacesCacheDir(), OFFICIAL_MARKETPLACE_CACHE_DIR_NAME)
+}
+
+function isOfficialMarketplaceSource(source: MarketplaceSource): boolean {
+  if (source.source === 'github') {
+    return source.repo === OFFICIAL_MARKETPLACE_SOURCE.repo
+  }
+  if (source.source === 'git') {
+    const normalized = source.url.toLowerCase()
+    return (
+      normalized.includes('github.com/anthropics/claude-plugins-official') ||
+      normalized.includes('git@github.com:anthropics/claude-plugins-official')
+    )
+  }
+  return false
+}
+
+function getMarketplaceCacheDirName(
+  source: MarketplaceSource,
+  marketplaceName: string,
+): string {
+  return isOfficialMarketplaceSource(source) ||
+    marketplaceName === OFFICIAL_MARKETPLACE_NAME
+    ? OFFICIAL_MARKETPLACE_CACHE_DIR_NAME
+    : marketplaceName
 }
 
 /**
@@ -1117,7 +1152,10 @@ async function cacheMarketplaceFromGit(
       performance.now() - pullStarted,
       pullResult.code === 0 ? undefined : classifyFetchError(pullResult.stderr),
     )
-    if (pullResult.code === 0) return
+    if (pullResult.code === 0) {
+      await normalizePluginManifestDirectories(cachePath)
+      return
+    }
     logForDebugging(`git pull failed, will re-clone: ${pullResult.stderr}`, {
       level: 'warn',
     })
@@ -1174,6 +1212,7 @@ async function cacheMarketplaceFromGit(
     }
     throw new Error(`Failed to clone marketplace repository: ${result.stderr}`)
   }
+  await normalizePluginManifestDirectories(cachePath)
   safeCallProgress(onProgress, 'Clone complete, validating marketplace…')
 }
 
@@ -1364,6 +1403,31 @@ function getCachePathForSource(source: MarketplaceSource): string {
             ? basename(source.path)
             : 'temp_' + Date.now()
   return tempName
+}
+
+async function getMarketplaceManifestPath(
+  marketplaceRoot: string,
+  configuredPath?: string,
+): Promise<string> {
+  if (!configuredPath) {
+    return findPluginManifestPath(marketplaceRoot, 'marketplace.json')
+  }
+
+  const directPath = join(marketplaceRoot, configuredPath)
+  if (await pathExists(directPath)) return directPath
+
+  const helionPath = join(
+    marketplaceRoot,
+    configuredPath.replace(
+      /(^|[/\\])\.claude-plugin(?=($|[/\\]))/,
+      `$1.helion-plugin`,
+    ),
+  )
+  if (helionPath !== directPath && (await pathExists(helionPath))) {
+    return helionPath
+  }
+
+  return directPath
 }
 
 /**
@@ -1591,9 +1655,10 @@ async function loadAndCacheMarketplace(
           throw lastError
         }
 
-        marketplacePath = join(
+        await normalizePluginManifestDirectories(temporaryCachePath)
+        marketplacePath = await getMarketplaceManifestPath(
           temporaryCachePath,
-          source.path || '.claude-plugin/marketplace.json',
+          source.path,
         )
         break
       }
@@ -1608,9 +1673,10 @@ async function loadAndCacheMarketplace(
           source.sparsePaths,
           onProgress,
         )
-        marketplacePath = join(
+        await normalizePluginManifestDirectories(temporaryCachePath)
+        marketplacePath = await getMarketplaceManifestPath(
           temporaryCachePath,
-          source.path || '.claude-plugin/marketplace.json',
+          source.path,
         )
         break
       }
@@ -1634,11 +1700,15 @@ async function loadAndCacheMarketplace(
       }
 
       case 'directory': {
-        // For directories, look for .claude-plugin/marketplace.json
+        // For directories, look for .helion-plugin/marketplace.json
+        // with .claude-plugin kept as a legacy fallback.
         // Resolve to absolute so error messages show the actual path checked
         // (legacy known_marketplaces.json entries may have relative paths)
         const absPath = resolve(source.path)
-        marketplacePath = join(absPath, '.claude-plugin', 'marketplace.json')
+        marketplacePath = await findPluginManifestPath(
+          absPath,
+          'marketplace.json',
+        )
         temporaryCachePath = absPath
         cleanupNeeded = false
         break
@@ -1658,9 +1728,8 @@ async function loadAndCacheMarketplace(
         // diffMarketplaces detects settings edits via isEqual — no special
         // dirty-tracking needed.
         temporaryCachePath = join(cacheDir, source.name)
-        marketplacePath = join(
+        marketplacePath = getPreferredPluginManifestPath(
           temporaryCachePath,
-          '.claude-plugin',
           'marketplace.json',
         )
         cleanupNeeded = false
@@ -1706,7 +1775,10 @@ async function loadAndCacheMarketplace(
     }
 
     // Now rename the cache path to use the marketplace's actual name
-    const finalCachePath = join(cacheDir, marketplace.name)
+    const finalCachePath = join(
+      cacheDir,
+      getMarketplaceCacheDirName(source, marketplace.name),
+    )
     // Defense-in-depth: the schema rejects path separators, .., and . in marketplace.name,
     // but verify the computed path is a strict subdirectory of cacheDir before fs.rm.
     // A malicious marketplace.json with a crafted name must never cause us to rm outside
@@ -2058,17 +2130,22 @@ export async function removeMarketplaceSource(name: string): Promise<void> {
 async function readCachedMarketplace(
   installLocation: string,
 ): Promise<PluginMarketplace> {
-  // For git-sourced directories, the manifest lives at .claude-plugin/marketplace.json.
+  // For git-sourced directories, the manifest lives at .helion-plugin/marketplace.json
+  // with .claude-plugin kept as a legacy fallback.
   // For url/file/directory sources it is the installLocation itself.
   // Try the nested path first; fall back to installLocation when it is a plain file
   // (ENOTDIR) or the nested file is simply missing (ENOENT).
-  const nestedPath = join(installLocation, '.claude-plugin', 'marketplace.json')
-  try {
-    return await parseFileWithSchema(nestedPath, PluginMarketplaceSchema())
-  } catch (e) {
-    if (e instanceof ConfigParseError) throw e
-    const code = getErrnoCode(e)
-    if (code !== 'ENOENT' && code !== 'ENOTDIR') throw e
+  for (const nestedPath of [
+    getPreferredPluginManifestPath(installLocation, 'marketplace.json'),
+    join(installLocation, '.claude-plugin', 'marketplace.json'),
+  ]) {
+    try {
+      return await parseFileWithSchema(nestedPath, PluginMarketplaceSchema())
+    } catch (e) {
+      if (e instanceof ConfigParseError) throw e
+      const code = getErrnoCode(e)
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw e
+    }
   }
   return await parseFileWithSchema(installLocation, PluginMarketplaceSchema())
 }
@@ -2161,8 +2238,9 @@ export const getMarketplace = memoize(
 
     // Cache doesn't exist or is invalid, fetch from source
     let marketplace: PluginMarketplace
+    let cachePath: string
     try {
-      ;({ marketplace } = await loadAndCacheMarketplace(entry.source))
+      ;({ marketplace, cachePath } = await loadAndCacheMarketplace(entry.source))
     } catch (error) {
       throw new Error(
         `Failed to load marketplace "${name}" from source (${entry.source.source}): ${errorMessage(error)}`,
@@ -2171,6 +2249,7 @@ export const getMarketplace = memoize(
 
     // Update lastUpdated only when we actually fetch
     config[name]!.lastUpdated = new Date().toISOString()
+    config[name]!.installLocation = cachePath
     await saveKnownMarketplacesConfig(config)
 
     return marketplace
@@ -2312,8 +2391,21 @@ export async function refreshAllMarketplaces(): Promise<void> {
     // inc-5046: same GCS intercept as refreshMarketplace() — bulk update
     // hits this path on `Helioncoder plugin marketplace update` (no name arg).
     if (name === OFFICIAL_MARKETPLACE_NAME) {
+      let installLocation = entry.installLocation
+      const desiredLocation = getOfficialMarketplaceCachePath()
+      if (installLocation !== desiredLocation) {
+        if (
+          (await pathExists(installLocation)) &&
+          !(await pathExists(desiredLocation))
+        ) {
+          await getFsImplementation().rename(installLocation, desiredLocation)
+        }
+        installLocation = desiredLocation
+        config[name]!.installLocation = desiredLocation
+        await normalizePluginManifestDirectories(desiredLocation)
+      }
       const sha = await fetchOfficialMarketplaceFromGcs(
-        entry.installLocation,
+        installLocation,
         getMarketplacesCacheDir(),
       )
       if (sha !== null) {
@@ -2391,7 +2483,7 @@ export async function refreshMarketplace(
 
   try {
     // For updates, use the existing installLocation directly (in-place update)
-    const installLocation = entry.installLocation
+    let installLocation = entry.installLocation
     const source = entry.source
 
     // Seed-managed marketplaces are controlled by the seed image. Refreshing
@@ -2430,6 +2522,18 @@ export async function refreshMarketplace(
     // no data migration is needed — existing known_marketplaces.json entries
     // still say source:'github', which is true (GCS is a mirror).
     if (name === OFFICIAL_MARKETPLACE_NAME) {
+      const desiredLocation = getOfficialMarketplaceCachePath()
+      if (installLocation !== desiredLocation) {
+        if (
+          (await pathExists(installLocation)) &&
+          !(await pathExists(desiredLocation))
+        ) {
+          await getFsImplementation().rename(installLocation, desiredLocation)
+        }
+        installLocation = desiredLocation
+        config[name] = { ...entry, installLocation }
+        await normalizePluginManifestDirectories(installLocation)
+      }
       const sha = await fetchOfficialMarketplaceFromGcs(
         installLocation,
         getMarketplacesCacheDir(),
@@ -2641,4 +2745,3 @@ export async function setMarketplaceAutoUpdate(
 export const _test = {
   redactUrlCredentials,
 }
-

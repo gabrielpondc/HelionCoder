@@ -15,6 +15,7 @@ import { join } from 'path'
 import { logForDebugging } from '../debug.js'
 import { jsonParse, jsonStringify } from '../slowOperations.js'
 import { loadKnownMarketplacesConfigSafe } from './marketplaceManager.js'
+import { getPluginManifestPathCandidates } from './pluginManifestPaths.js'
 import {
   type KnownMarketplacesFile,
   KnownMarketplacesFileSchema,
@@ -114,12 +115,12 @@ export async function saveMarketplaceJsonToZipCache(
 
 /**
  * Read marketplace.json content from a cloned marketplace directory or file.
- * For directory sources: checks .claude-plugin/marketplace.json, marketplace.json
+ * For directory sources: checks supported plugin manifest dirs, then marketplace.json
  * For URL sources: the installLocation IS the marketplace JSON file itself.
  */
 async function readMarketplaceJsonContent(dir: string): Promise<string | null> {
   const candidates = [
-    join(dir, '.claude-plugin', 'marketplace.json'),
+    ...getPluginManifestPathCandidates(dir, 'marketplace.json'),
     join(dir, 'marketplace.json'),
     dir, // For URL sources, installLocation IS the marketplace JSON file
   ]
@@ -162,4 +163,3 @@ export async function syncMarketplacesToZipCache(): Promise<void> {
   }
   await writeZipCacheKnownMarketplaces(mergedKnownMarketplaces)
 }
-

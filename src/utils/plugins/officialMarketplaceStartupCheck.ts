@@ -8,18 +8,20 @@
  * - Previous installation attempts
  */
 
-import { join } from 'path'
 import { getFeatureValue_CACHED_MAY_BE_STALE } from '../../services/analytics/growthbook.js'
 import { logEvent } from '../../services/analytics/index.js'
 import { getGlobalConfig, saveGlobalConfig } from '../config.js'
 import { logForDebugging } from '../debug.js'
 import { isEnvTruthy } from '../envUtils.js'
-import { toError } from '../errors.js'
+import { errorMessage, toError } from '../errors.js'
+import { pathExists } from '../file.js'
+import { getFsImplementation } from '../fsOperations.js'
 import { logError } from '../log.js'
 import { checkGitAvailable, markGitUnavailable } from './gitAvailability.js'
 import { isSourceAllowedByPolicy } from './marketplaceHelpers.js'
 import {
   addMarketplaceSource,
+  getOfficialMarketplaceCachePath,
   getMarketplacesCacheDir,
   loadKnownMarketplacesConfig,
   saveKnownMarketplacesConfig,
@@ -29,6 +31,7 @@ import {
   OFFICIAL_MARKETPLACE_SOURCE,
 } from './officialMarketplace.js'
 import { fetchOfficialMarketplaceFromGcs } from './officialMarketplaceGcs.js'
+import { normalizePluginManifestDirectories } from './pluginManifestPaths.js'
 
 /**
  * Reason why the official marketplace was not installed
@@ -58,6 +61,37 @@ export const RETRY_CONFIG = {
   INITIAL_DELAY_MS: 60 * 60 * 1000, // 1 hour
   BACKOFF_MULTIPLIER: 2,
   MAX_DELAY_MS: 7 * 24 * 60 * 60 * 1000, // 1 week
+}
+
+async function ensureOfficialMarketplaceCachePath(
+  knownMarketplaces: Awaited<ReturnType<typeof loadKnownMarketplacesConfig>>,
+): Promise<void> {
+  const entry = knownMarketplaces[OFFICIAL_MARKETPLACE_NAME]
+  if (!entry) return
+
+  const desiredLocation = getOfficialMarketplaceCachePath()
+  if (entry.installLocation === desiredLocation) return
+
+  try {
+    if (
+      (await pathExists(entry.installLocation)) &&
+      !(await pathExists(desiredLocation))
+    ) {
+      await getFsImplementation().mkdir(getMarketplacesCacheDir())
+      await getFsImplementation().rename(entry.installLocation, desiredLocation)
+    }
+    await normalizePluginManifestDirectories(desiredLocation)
+    knownMarketplaces[OFFICIAL_MARKETPLACE_NAME] = {
+      ...entry,
+      installLocation: desiredLocation,
+    }
+    await saveKnownMarketplacesConfig(knownMarketplaces)
+  } catch (error) {
+    logForDebugging(
+      `Failed to migrate official marketplace cache path to ${desiredLocation}: ${errorMessage(error)}`,
+      { level: 'warn' },
+    )
+  }
 }
 
 /**
@@ -182,6 +216,7 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     // Check if marketplace is already installed
     const knownMarketplaces = await loadKnownMarketplacesConfig()
     if (knownMarketplaces[OFFICIAL_MARKETPLACE_NAME]) {
+      await ensureOfficialMarketplaceCachePath(knownMarketplaces)
       logForDebugging(
         `Official marketplace '${OFFICIAL_MARKETPLACE_NAME}' already installed, skipping`,
       )
@@ -219,7 +254,7 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     // with source:'github' (still true — GCS is a mirror) and skip git
     // entirely.
     const cacheDir = getMarketplacesCacheDir()
-    const installLocation = join(cacheDir, OFFICIAL_MARKETPLACE_NAME)
+    const installLocation = getOfficialMarketplaceCachePath()
     const gcsSha = await fetchOfficialMarketplaceFromGcs(
       installLocation,
       cacheDir,
@@ -437,4 +472,3 @@ export async function checkAndInstallOfficialMarketplace(): Promise<OfficialMark
     }
   }
 }
-
