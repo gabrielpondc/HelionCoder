@@ -322,11 +322,20 @@ public final class HelionCli {
 
     private static @NotNull ResolvedCli resolve(@NotNull Project project) {
         String configured = HelionSettings.executablePath();
+        String executableName = isWindows() ? "helion-coder.exe" : "helion-coder";
         if (!configured.isBlank()) {
+            ResolvedCli configuredCommand = resolveConfiguredCommand(configured, executableName);
+            if (configuredCommand != null) {
+                return configuredCommand;
+            }
             return toResolvedCli(project, configured, "已配置的可执行文件");
         }
 
-        String executableName = isWindows() ? "helion-coder.exe" : "helion-coder";
+        ResolvedCli installed = findInstalledExecutable(executableName);
+        if (installed != null) {
+            return installed;
+        }
+
         for (Path root : candidateRoots(project)) {
             Path nativeCandidate = root.resolve("dist").resolve(executableName);
             if (Files.isRegularFile(nativeCandidate)) {
@@ -349,16 +358,6 @@ public final class HelionCli {
             }
         }
 
-        String fromPath = findOnPath(executableName);
-        if (fromPath != null) {
-            return toResolvedCli(fromPath, "PATH 中的可执行文件");
-        }
-
-        String fromCommonPath = findInCommonLocations(executableName);
-        if (fromCommonPath != null) {
-            return toResolvedCli(fromCommonPath, "常见安装路径中的可执行文件");
-        }
-
         String fromShell = findWithLoginShell(executableName);
         if (fromShell != null) {
             return toResolvedCli(fromShell, "登录 shell PATH 中的可执行文件");
@@ -371,8 +370,32 @@ public final class HelionCli {
         return new ResolvedCli("helion-coder", List.of(), "PATH 中的 helion-coder");
     }
 
+    private static @Nullable ResolvedCli resolveConfiguredCommand(
+        @NotNull String configured,
+        @NotNull String executableName
+    ) {
+        String expanded = expandHome(stripMatchingQuotes(configured.trim()));
+        if (!isBareCommand(expanded)) {
+            return null;
+        }
+
+        ResolvedCli installed = findInstalledExecutable(expanded);
+        if (installed != null) {
+            return new ResolvedCli(installed.command(), installed.argsPrefix(), "已配置命令（" + installed.label() + "）");
+        }
+
+        if (!expanded.equals(executableName)) {
+            ResolvedCli defaultInstalled = findInstalledExecutable(executableName);
+            if (defaultInstalled != null) {
+                return new ResolvedCli(defaultInstalled.command(), defaultInstalled.argsPrefix(), "已配置命令（" + defaultInstalled.label() + "）");
+            }
+        }
+
+        return null;
+    }
+
     private static @NotNull ResolvedCli toResolvedCli(@NotNull String candidate, @NotNull String label) {
-        String expanded = expandHome(candidate.trim());
+        String expanded = expandHome(stripMatchingQuotes(candidate.trim()));
         if (expanded.endsWith(".mjs")) {
             return new ResolvedCli("node", List.of(expanded), label);
         }
@@ -384,7 +407,7 @@ public final class HelionCli {
         @NotNull String candidate,
         @NotNull String label
     ) {
-        String expanded = expandHome(candidate.trim());
+        String expanded = expandHome(stripMatchingQuotes(candidate.trim()));
         Path path = Paths.get(expanded);
         if (!path.isAbsolute() && looksLikeRelativePath(expanded)) {
             path = workspacePath(project).resolve(path).normalize();
@@ -394,6 +417,10 @@ public final class HelionCli {
 
     private static boolean looksLikeRelativePath(@NotNull String value) {
         return value.startsWith(".") || value.contains("/") || value.contains("\\");
+    }
+
+    private static boolean isBareCommand(@NotNull String value) {
+        return !value.isBlank() && !value.endsWith(".mjs") && !value.contains("/") && !value.contains("\\");
     }
 
     private static @NotNull Set<Path> candidateRoots(@NotNull Project project) {
@@ -416,28 +443,49 @@ public final class HelionCli {
         return basePath == null ? Paths.get(System.getProperty("user.home")) : Paths.get(basePath);
     }
 
+    private static @Nullable ResolvedCli findInstalledExecutable(@NotNull String command) {
+        for (String name : executableAliases(command)) {
+            String fromPath = findOnPath(name);
+            if (fromPath != null) {
+                return toResolvedCli(fromPath, "PATH 中的可执行文件");
+            }
+
+            String fromCommonPath = findInCommonLocations(name);
+            if (fromCommonPath != null) {
+                return toResolvedCli(fromCommonPath, "常见安装路径中的可执行文件");
+            }
+        }
+        return null;
+    }
+
     private static @Nullable String findOnPath(@NotNull String command) {
-        String path = System.getenv("PATH");
-        if (path == null || path.isBlank()) {
+        String pathValue = firstNonBlank(System.getenv("PATH"), System.getenv("Path"));
+        if (pathValue == null) {
             return null;
         }
-        for (String entry : path.split(File.pathSeparator)) {
-            Path candidate = Paths.get(entry).resolve(command);
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return candidate.toString();
+
+        for (String entry : pathValue.split(File.pathSeparator)) {
+            String dir = stripMatchingQuotes(entry.trim());
+            if (dir.isBlank()) {
+                continue;
+            }
+            for (String name : executableNames(command)) {
+                Path candidate = Paths.get(dir).resolve(name);
+                if (isRunnableFile(candidate)) {
+                    return candidate.toString();
+                }
             }
         }
         return null;
     }
 
     private static @Nullable String findInCommonLocations(@NotNull String command) {
-        if (isWindows()) {
-            return null;
-        }
-        for (String directory : List.of("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin")) {
-            Path candidate = Paths.get(directory).resolve(command);
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
-                return candidate.toString();
+        for (Path directory : commonExecutableDirectories()) {
+            for (String name : executableNames(command)) {
+                Path candidate = directory.resolve(name);
+                if (isRunnableFile(candidate)) {
+                    return candidate.toString();
+                }
             }
         }
         return null;
@@ -479,7 +527,7 @@ public final class HelionCli {
                 return null;
             }
             Path candidate = Paths.get(output.trim());
-            if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
+            if (isRunnableFile(candidate)) {
                 return candidate.toString();
             }
         } catch (IOException | InterruptedException error) {
@@ -493,6 +541,83 @@ public final class HelionCli {
     private static @NotNull String shellPath() {
         String shell = System.getenv("SHELL");
         return shell == null || shell.isBlank() ? "/bin/zsh" : shell;
+    }
+
+    private static @NotNull List<String> executableAliases(@NotNull String command) {
+        Set<String> aliases = new LinkedHashSet<>();
+        aliases.add(command);
+        if (isWindows()) {
+            aliases.add("helion-coder.exe");
+            aliases.add("helion-coder");
+            aliases.add("helioncoder.exe");
+            aliases.add("helioncoder");
+        } else {
+            aliases.add("helion-coder");
+            aliases.add("helioncoder");
+        }
+        return new ArrayList<>(aliases);
+    }
+
+    private static @NotNull List<String> executableNames(@NotNull String command) {
+        if (!isWindows() || command.contains(".")) {
+            return List.of(command);
+        }
+        return List.of(command + ".exe", command + ".cmd", command + ".bat", command + ".com");
+    }
+
+    private static @NotNull List<Path> commonExecutableDirectories() {
+        List<Path> directories = new ArrayList<>();
+        if (isWindows()) {
+            addEnvPath(directories, "LOCALAPPDATA", "Programs", "HelionCoder", "bin");
+            addEnvPath(directories, "ProgramFiles", "HelionCoder", "bin");
+            addEnvPath(directories, "ProgramFiles(x86)", "HelionCoder", "bin");
+            addEnvPath(directories, "USERPROFILE", "bin");
+        } else {
+            String home = System.getProperty("user.home");
+            directories.add(Paths.get(home, ".local", "bin"));
+            directories.add(Paths.get(home, "bin"));
+            directories.add(Paths.get("/opt/homebrew/bin"));
+            directories.add(Paths.get("/usr/local/bin"));
+            directories.add(Paths.get("/usr/bin"));
+            directories.add(Paths.get("/bin"));
+        }
+        return directories;
+    }
+
+    private static void addEnvPath(@NotNull List<Path> directories, @NotNull String envName, @NotNull String... segments) {
+        String value = System.getenv(envName);
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        Path path = Paths.get(value, segments);
+        if (!directories.contains(path)) {
+            directories.add(path);
+        }
+    }
+
+    private static boolean isRunnableFile(@NotNull Path path) {
+        return Files.isRegularFile(path) && (isWindows() || Files.isExecutable(path));
+    }
+
+    private static @Nullable String firstNonBlank(@Nullable String first, @Nullable String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        if (second != null && !second.isBlank()) {
+            return second;
+        }
+        return null;
+    }
+
+    private static @NotNull String stripMatchingQuotes(@NotNull String value) {
+        if (value.length() >= 2) {
+            char first = value.charAt(0);
+            char last = value.charAt(value.length() - 1);
+            if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
+                return value.substring(1, value.length() - 1);
+            }
+        }
+        return value;
     }
 
     private static void addOption(@NotNull List<String> args, @NotNull String name, @NotNull String value) {

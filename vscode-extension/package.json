@@ -2,7 +2,7 @@
   "name": "helion-coder-vscode",
   "displayName": "HelionCoder",
   "description": "HelionCoder 本地 CLI 的 VS Code 集成，包含助手面板和行内补全。",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "publisher": "GabrielPondC",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -104,7 +104,7 @@
         "helionCoder.executablePath": {
           "type": "string",
           "default": "",
-          "description": "HelionCoder 可执行文件路径。留空会自动检测 dist/helion-coder、dist/cli.mjs 或 PATH 中的 helion-coder。"
+          "description": "HelionCoder 可执行文件路径。可填绝对路径或 helion-coder；留空会自动检测 PATH、常见安装目录、dist/helion-coder、dist/cli.mjs。"
         },
         "helionCoder.defaultArgs": {
           "type": "array",
@@ -186,8 +186,13 @@
             "manual",
             "automatic"
           ],
-          "default": "manual",
+          "default": "automatic",
           "description": "manual（手动）只通过 HelionCoder 命令触发补全；automatic（自动）允许 VS Code 在输入时请求建议。"
+        },
+        "helionCoder.completion.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "在 HelionCoder 输出面板记录行内补全的触发、跳过原因和失败信息。"
         },
         "helionCoder.completion.timeoutMs": {
           "type": "number",
@@ -218,6 +223,10 @@
           "description": "从助手面板提问时默认进入计划模式，仅生成计划，不直接修改文件。"
         }
       }
+    },
+    "configurationDefaults": {
+      "editor.inlineSuggest.enabled": true,
+      "editor.inlineSuggest.showToolbar": "onHover"
     },
     "viewsContainers": {
       "activitybar": [

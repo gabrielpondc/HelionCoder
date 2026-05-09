@@ -415,7 +415,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             ApplicationManager.getApplication().invokeLater(() -> {
                 String value = Messages.showInputDialog(
                     project,
-                    "dist/helion-coder 或 dist/cli.mjs 的绝对路径。留空自动检测。",
+                    "可填绝对路径或 helion-coder。留空会自动检测 PATH、常见安装目录、dist/cli.mjs。",
                     "HelionCoder CLI 可执行文件",
                     null,
                     HelionSettings.executablePath(),
@@ -571,7 +571,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
         private void promptInstallMissingCli() {
             int answer = Messages.showYesNoDialog(
                 project,
-                "当前没有检测到本地 helion-coder CLI，无法比较版本。是否现在打开终端安装最新 CLI？\n\n也可以点「CLI 路径」配置 dist/helion-coder 或 dist/cli.mjs 的绝对路径。",
+                "当前没有检测到本地 helion-coder CLI，无法比较版本。是否现在打开终端安装最新 CLI？\n\n也可以点「CLI 路径」配置绝对路径，或填 helion-coder 让插件从 PATH/常见安装目录解析。",
                 "HelionCoder CLI 未安装",
                 "安装 CLI",
                 "稍后配置",

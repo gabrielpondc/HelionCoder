@@ -125,14 +125,27 @@ export class HelionCli {
       .get<string>("executablePath", "")
       .trim();
 
-    if (configured.length > 0) {
-      return this.toResolvedCli(configured, "已配置的可执行文件");
-    }
-
-    const roots = this.getCandidateRoots();
     const executableName =
       process.platform === "win32" ? "helion-coder.exe" : "helion-coder";
 
+    if (configured.length > 0) {
+      const configuredOnPath = this.resolveConfiguredCommand(
+        configured,
+        executableName,
+      );
+      if (configuredOnPath) {
+        return configuredOnPath;
+      }
+
+      return this.toResolvedCli(configured, "已配置的可执行文件");
+    }
+
+    const installed = this.findInstalledExecutable(executableName);
+    if (installed) {
+      return this.toResolvedCli(installed.path, installed.label);
+    }
+
+    const roots = this.getCandidateRoots();
     for (const root of roots) {
       const nativeCandidate = path.join(root, "dist", executableName);
       if (this.isFile(nativeCandidate)) {
@@ -153,12 +166,6 @@ export class HelionCli {
       if (this.isFile(packagedModule)) {
         return this.toResolvedCli(packagedModule, "已打包模块");
       }
-    }
-
-    const fromPath =
-      this.findOnPath(executableName) ?? this.findOnPath("helion-coder");
-    if (fromPath) {
-      return this.toResolvedCli(fromPath, "PATH 中的可执行文件");
     }
 
     return {
@@ -492,6 +499,36 @@ export class HelionCli {
     };
   }
 
+  private resolveConfiguredCommand(
+    configured: string,
+    executableName: string,
+  ): ResolvedCli | undefined {
+    const normalized = expandHome(normalizeConfiguredExecutable(configured));
+    if (!isBareCommand(normalized)) {
+      return undefined;
+    }
+
+    const installed = this.findInstalledExecutable(normalized);
+    if (installed) {
+      return this.toResolvedCli(
+        installed.path,
+        `已配置命令（${installed.label}）`,
+      );
+    }
+
+    if (normalized !== executableName) {
+      const defaultInstalled = this.findInstalledExecutable(executableName);
+      if (defaultInstalled) {
+        return this.toResolvedCli(
+          defaultInstalled.path,
+          `已配置命令（${defaultInstalled.label}）`,
+        );
+      }
+    }
+
+    return undefined;
+  }
+
   private getCandidateRoots(): string[] {
     const roots = new Set<string>();
 
@@ -514,23 +551,49 @@ export class HelionCli {
     }
   }
 
+  private findInstalledExecutable(
+    command: string,
+  ): { path: string; label: string } | undefined {
+    for (const name of executableAliases(command)) {
+      const fromPath = this.findOnPath(name);
+      if (fromPath) {
+        return { path: fromPath, label: "PATH 中的可执行文件" };
+      }
+
+      const fromCommonLocation = this.findInCommonLocations(name);
+      if (fromCommonLocation) {
+        return {
+          path: fromCommonLocation,
+          label: "常见安装路径中的可执行文件",
+        };
+      }
+    }
+
+    return undefined;
+  }
+
   private findOnPath(command: string): string | undefined {
-    const pathValue = process.env.PATH;
+    const pathValue = process.env.PATH ?? process.env.Path;
     if (!pathValue) {
       return undefined;
     }
 
-    const pathExts =
-      process.platform === "win32"
-        ? (process.env.PATHEXT ?? ".EXE;.CMD;.BAT").split(";")
-        : [""];
-
     for (const dir of pathValue.split(path.delimiter)) {
-      for (const ext of pathExts) {
-        const candidate = path.join(
-          dir,
-          command.endsWith(ext) ? command : `${command}${ext}`,
-        );
+      for (const name of executableNames(command)) {
+        const candidate = path.join(stripPathEntryQuotes(dir), name);
+        if (this.isFile(candidate)) {
+          return candidate;
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private findInCommonLocations(command: string): string | undefined {
+    for (const dir of commonExecutableDirectories()) {
+      for (const name of executableNames(command)) {
+        const candidate = path.join(dir, name);
         if (this.isFile(candidate)) {
           return candidate;
         }
@@ -573,6 +636,80 @@ function normalizeConfiguredExecutable(value: string): string {
   }
 
   return normalized;
+}
+
+function isBareCommand(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !value.endsWith(".mjs") &&
+    !value.includes("/") &&
+    !value.includes("\\")
+  );
+}
+
+function executableAliases(command: string): string[] {
+  const aliases = new Set<string>([command]);
+  if (process.platform === "win32") {
+    aliases.add("helion-coder.exe");
+    aliases.add("helion-coder");
+    aliases.add("helioncoder.exe");
+    aliases.add("helioncoder");
+  } else {
+    aliases.add("helion-coder");
+    aliases.add("helioncoder");
+  }
+  return [...aliases];
+}
+
+function executableNames(command: string): string[] {
+  if (process.platform !== "win32" || path.extname(command)) {
+    return [command];
+  }
+
+  const pathExts = (process.env.PATHEXT ?? ".EXE;.CMD;.BAT;.COM")
+    .split(";")
+    .map((ext) => ext.trim())
+    .filter(Boolean);
+  return pathExts.map((ext) => `${command}${ext}`);
+}
+
+function commonExecutableDirectories(): string[] {
+  const dirs = new Set<string>();
+  if (process.platform === "win32") {
+    addIfSet(dirs, process.env.LOCALAPPDATA, "Programs", "HelionCoder", "bin");
+    addIfSet(dirs, process.env.ProgramFiles, "HelionCoder", "bin");
+    addIfSet(dirs, process.env["ProgramFiles(x86)"], "HelionCoder", "bin");
+    addIfSet(dirs, process.env.USERPROFILE, "bin");
+  } else {
+    dirs.add(path.join(os.homedir(), ".local", "bin"));
+    dirs.add(path.join(os.homedir(), "bin"));
+    dirs.add("/opt/homebrew/bin");
+    dirs.add("/usr/local/bin");
+    dirs.add("/usr/bin");
+    dirs.add("/bin");
+  }
+  return [...dirs];
+}
+
+function addIfSet(
+  dirs: Set<string>,
+  base: string | undefined,
+  ...segments: string[]
+): void {
+  if (base?.trim()) {
+    dirs.add(path.join(base, ...segments));
+  }
+}
+
+function stripPathEntryQuotes(value: string): string {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
 }
 
 function quoteArg(value: string): string {

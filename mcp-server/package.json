@@ -1,6 +1,6 @@
 {
   "name": "claude-code-explorer-mcp",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "mcpName": "io.github.777genius/claude-code-explorer-mcp",
   "description": "MCP server for exploring the Claude Code source code — STDIO, HTTP, and SSE transports",
   "repository": {

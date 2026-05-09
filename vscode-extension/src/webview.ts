@@ -16,6 +16,7 @@ import {
   buildContextPrompt,
   getEditorSnapshot,
 } from "./editorContext";
+import { isSupportedCompletionDocument } from "./completion";
 import type { ModelResolver } from "./modelResolver";
 
 type WebviewMessage =
@@ -318,13 +319,23 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
 
   private async triggerInlineCompletion(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
-    if (!editor || editor.document.uri.scheme !== "file") {
+    if (!editor || !isSupportedCompletionDocument(editor.document)) {
+      this.output.appendLine(
+        `[completion] /complete skipped: ${
+          editor
+            ? `unsupported scheme ${editor.document.uri.scheme}; uri=${editor.document.uri.toString()}`
+            : "no active text editor"
+        }`,
+      );
       void vscode.window.showWarningMessage(
-        "请先打开一个文件，再运行 /complete。",
+        "请先把光标放到支持的代码编辑器里，再运行 /complete。",
       );
       return;
     }
 
+    this.output.appendLine(
+      `[completion] /complete trigger: language=${editor.document.languageId}; scheme=${editor.document.uri.scheme}; uri=${editor.document.uri.toString()}`,
+    );
     await vscode.window.showTextDocument(editor.document, {
       viewColumn: editor.viewColumn,
       selection: editor.selection,
@@ -342,6 +353,12 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
   ): Promise<void> {
     const trimmed = prompt.trim();
     if (!trimmed) {
+      return;
+    }
+
+    if (/^\/complete(?:\s|$)/i.test(trimmed)) {
+      this.output.appendLine("[completion] /complete intercepted from assistant panel");
+      await this.triggerInlineCompletion();
       return;
     }
 

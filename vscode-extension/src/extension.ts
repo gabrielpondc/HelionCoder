@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import { HelionCli, getWorkspaceCwd } from './cli';
-import { HelionInlineCompletionProvider } from './completion';
+import {
+  HelionInlineCompletionProvider,
+  NOTEBOOK_CELL_SCHEME,
+  isSupportedCompletionDocument,
+} from './completion';
 import { buildContextPrompt, getEditorSnapshot } from './editorContext';
 import { ModelResolver } from './modelResolver';
 import { checkForUpdates } from './updateChecker';
@@ -8,6 +12,9 @@ import { HelionAssistantViewProvider } from './webview';
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('HelionCoder');
+  output.appendLine(
+    `[extension] HelionCoder activated: version=${String(context.extension.packageJSON.version ?? 'unknown')}`,
+  );
   const cli = new HelionCli(context, output);
   const modelResolver = new ModelResolver(output);
   const assistantView = new HelionAssistantViewProvider(
@@ -24,6 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
   status.show();
   const inlineCompletionProvider = new HelionInlineCompletionProvider(
     cli,
+    output,
     status,
     updateStatus,
   );
@@ -46,7 +54,11 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     ),
     vscode.languages.registerInlineCompletionItemProvider(
-      { pattern: '**' },
+      [
+        { scheme: 'file' },
+        { scheme: 'untitled' },
+        { scheme: NOTEBOOK_CELL_SCHEME },
+      ],
       inlineCompletionProvider,
     ),
     inlineCompletionProvider,
@@ -97,6 +109,22 @@ export function activate(context: vscode.ExtensionContext): void {
         );
         return;
       }
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        output.appendLine('[completion] trigger command skipped: no active text editor');
+        void vscode.window.showWarningMessage('请先把光标放到代码编辑器里，再触发行内补全。');
+        return;
+      }
+      if (!isSupportedCompletionDocument(editor.document)) {
+        output.appendLine(
+          `[completion] trigger command skipped: unsupported scheme ${editor.document.uri.scheme}; uri=${editor.document.uri.toString()}`,
+        );
+        void vscode.window.showWarningMessage('当前编辑器类型暂不支持 HelionCoder 行内补全。');
+        return;
+      }
+      output.appendLine(
+        `[completion] trigger command: language=${editor.document.languageId}; scheme=${editor.document.uri.scheme}; uri=${editor.document.uri.toString()}`,
+      );
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }),
     vscode.commands.registerCommand('helionCoder.selectModel', async () => {
@@ -125,7 +153,7 @@ export function activate(context: vscode.ExtensionContext): void {
         .get<string>('executablePath', '');
       const value = await vscode.window.showInputBox({
         title: 'HelionCoder CLI 可执行文件',
-        prompt: 'dist/helion-coder 或 dist/cli.mjs 的绝对路径。留空自动检测。',
+        prompt: '可填绝对路径或 helion-coder。留空会自动检测 PATH、常见安装目录、dist/cli.mjs。',
         value: current,
       });
       if (value === undefined) {

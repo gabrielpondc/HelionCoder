@@ -6,6 +6,7 @@ import com.intellij.openapi.actionSystem.DataContext;
 import com.intellij.openapi.actionSystem.IdeActions;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorCustomElementRenderer;
 import com.intellij.openapi.editor.EditorFactory;
@@ -32,6 +33,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class HelionGhostCompletionService implements Disposable {
+    private static final Logger LOG = Logger.getInstance(HelionGhostCompletionService.class);
     private static final Map<Project, HelionGhostCompletionService> SERVICES = new ConcurrentHashMap<>();
     private static final long DELAY_MS = 900;
     private static volatile boolean tabHandlerInstalled;
@@ -109,7 +111,8 @@ public final class HelionGhostCompletionService implements Disposable {
                 ApplicationManager.getApplication().invokeLater(() -> show(editor, state, requestId, offset, text));
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-            } catch (Throwable ignored) {
+            } catch (Throwable error) {
+                LOG.warn("HelionCoder automatic completion failed", error);
             }
         });
     }

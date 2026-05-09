@@ -2,6 +2,13 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { HelionCli, getWorkspaceCwd } from './cli';
 
+export const NOTEBOOK_CELL_SCHEME = 'vscode-notebook-cell';
+export const SUPPORTED_COMPLETION_SCHEMES = new Set([
+  'file',
+  'untitled',
+  NOTEBOOK_CELL_SCHEME,
+]);
+
 interface CompletionSnapshot {
   filePath: string;
   relativePath: string;
@@ -21,6 +28,7 @@ export class HelionInlineCompletionProvider
 
   constructor(
     private readonly cli: HelionCli,
+    private readonly output: vscode.OutputChannel,
     private readonly status: vscode.StatusBarItem,
     private readonly restoreStatus: () => void,
   ) {}
@@ -36,25 +44,43 @@ export class HelionInlineCompletionProvider
     token: vscode.CancellationToken,
   ): Promise<vscode.InlineCompletionItem[] | vscode.InlineCompletionList | undefined> {
     const config = vscode.workspace.getConfiguration('helionCoder.completion');
-    if (!config.get<boolean>('enabled', true)) {
+    const triggerKind = inlineTriggerKindName(context.triggerKind);
+    const debug = config.get<boolean>('debug', false);
+    const shouldLogSkip =
+      debug || context.triggerKind === vscode.InlineCompletionTriggerKind.Invoke;
+
+    const skip = (reason: string): undefined => {
+      if (shouldLogSkip) {
+        this.output.appendLine(
+          `[completion] skipped: ${reason}; language=${document.languageId}; scheme=${document.uri.scheme}; trigger=${triggerKind}; uri=${document.uri.toString()}`,
+        );
+      }
       return undefined;
+    };
+
+    if (!config.get<boolean>('enabled', true)) {
+      return skip('disabled by helionCoder.completion.enabled');
     }
 
-    const triggerMode = config.get<'manual' | 'automatic'>('triggerMode', 'manual');
+    const triggerMode = config.get<'manual' | 'automatic'>('triggerMode', 'automatic');
     if (
       triggerMode === 'manual' &&
       context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke
     ) {
-      return undefined;
+      return skip('trigger mode is manual');
     }
 
-    if (document.uri.scheme !== 'file') {
-      return undefined;
+    if (!isSupportedCompletionDocument(document)) {
+      return skip('unsupported document scheme');
     }
 
     const linePrefix = document.lineAt(position.line).text.slice(0, position.character);
-    if (triggerMode === 'automatic' && linePrefix.trim().length < 2) {
-      return undefined;
+    if (
+      triggerMode === 'automatic' &&
+      context.triggerKind !== vscode.InlineCompletionTriggerKind.Invoke &&
+      linePrefix.trim().length < 2
+    ) {
+      return skip('automatic trigger ignored because line prefix is too short');
     }
 
     const maxPrefixChars = config.get<number>('maxPrefixChars', 5000);
@@ -63,9 +89,12 @@ export class HelionInlineCompletionProvider
 
     const prompt = buildCompletionPrompt(snapshot);
     const timeoutMs = config.get<number>('timeoutMs', 15000);
-    const cwd = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? getWorkspaceCwd();
+    const cwd = getCompletionCwd(document);
 
     try {
+      this.output.appendLine(
+        `[completion] request: language=${document.languageId}; scheme=${document.uri.scheme}; trigger=${triggerKind}; cwd=${cwd}; line=${position.line + 1}; character=${position.character + 1}`,
+      );
       this.showStatus('$(sync~spin) Helion 补全中...', 0);
       const result = await this.cli.runPrompt(prompt, {
         cwd,
@@ -75,10 +104,12 @@ export class HelionInlineCompletionProvider
       });
       const insertText = sanitizeCompletion(result.stdout, snapshot);
       if (!insertText) {
+        this.output.appendLine('[completion] no suggestion returned');
         this.showStatus('Helion 没有补全建议', 2200);
         return undefined;
       }
 
+      this.output.appendLine(`[completion] suggestion ready: ${insertText.length} chars`);
       this.showStatus('$(check) Helion 补全已生成', 2200);
       return [
         new vscode.InlineCompletionItem(
@@ -89,8 +120,12 @@ export class HelionInlineCompletionProvider
     } catch (error) {
       if (!token.isCancellationRequested) {
         console.warn(error);
+        this.output.appendLine(
+          `[completion] failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
         this.showStatus('Helion 补全失败', 2600);
       } else {
+        this.output.appendLine('[completion] canceled');
         this.restoreStatus();
       }
       return undefined;
@@ -126,9 +161,8 @@ function getCompletionSnapshot(
 ): CompletionSnapshot {
   const start = new vscode.Position(0, 0);
   const end = document.lineAt(document.lineCount - 1).range.end;
-  const workspaceRoot =
-    vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath ?? getWorkspaceCwd();
-  const filePath = document.uri.fsPath;
+  const filePath = getCompletionFilePath(document);
+  const workspaceRoot = getCompletionWorkspaceRoot(document) ?? path.dirname(filePath);
   const prefix = trimStartByChars(
     document.getText(new vscode.Range(start, position)),
     maxPrefixChars,
@@ -149,6 +183,39 @@ function getCompletionSnapshot(
     prefix,
     suffix,
   };
+}
+
+export function isSupportedCompletionDocument(document: vscode.TextDocument): boolean {
+  return SUPPORTED_COMPLETION_SCHEMES.has(document.uri.scheme);
+}
+
+export function getCompletionCwd(document: vscode.TextDocument): string {
+  const workspaceRoot = getCompletionWorkspaceRoot(document);
+  if (workspaceRoot) {
+    return workspaceRoot;
+  }
+
+  const filePath = getCompletionFilePath(document);
+  return filePath ? path.dirname(filePath) : getWorkspaceCwd();
+}
+
+function getCompletionWorkspaceRoot(document: vscode.TextDocument): string | undefined {
+  const directWorkspace = vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
+  if (directWorkspace) {
+    return directWorkspace;
+  }
+
+  const filePath = getCompletionFilePath(document);
+  const fileWorkspace = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath))?.uri.fsPath;
+  return fileWorkspace;
+}
+
+function getCompletionFilePath(document: vscode.TextDocument): string {
+  return document.uri.fsPath || document.fileName;
+}
+
+function inlineTriggerKindName(kind: vscode.InlineCompletionTriggerKind): string {
+  return kind === vscode.InlineCompletionTriggerKind.Invoke ? 'invoke' : 'automatic';
 }
 
 function buildCompletionPrompt(snapshot: CompletionSnapshot): string {

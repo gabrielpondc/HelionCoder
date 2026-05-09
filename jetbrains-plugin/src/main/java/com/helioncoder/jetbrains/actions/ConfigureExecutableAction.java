@@ -13,7 +13,7 @@ public final class ConfigureExecutableAction extends AnAction {
         Project project = event.getProject();
         String value = Messages.showInputDialog(
             project,
-            "dist/helion-coder 或 dist/cli.mjs 的绝对路径。留空自动检测。",
+            "可填绝对路径或 helion-coder。留空会自动检测 PATH、常见安装目录、dist/cli.mjs。",
             "HelionCoder CLI 可执行文件",
             null,
             HelionSettings.executablePath(),
@@ -26,4 +26,3 @@ public final class ConfigureExecutableAction extends AnAction {
         Messages.showInfoMessage(project, "HelionCoder 可执行文件设置已更新。", "HelionCoder");
     }
 }
-
