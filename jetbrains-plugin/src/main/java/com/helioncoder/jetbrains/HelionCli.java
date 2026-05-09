@@ -1215,7 +1215,24 @@ public final class HelionCli {
     }
 
     private static @NotNull String shellCommand(@NotNull List<String> command) {
+        if (isWindows()) {
+            return powerShellCommand(command);
+        }
         return String.join(" ", command.stream().map(HelionCli::quoteArg).toList());
+    }
+
+    private static @NotNull String powerShellCommand(@NotNull List<String> command) {
+        if (command.isEmpty()) {
+            return "";
+        }
+        return "& " + String.join(" ", command.stream().map(HelionCli::quotePowerShellArg).toList());
+    }
+
+    private static @NotNull String quotePowerShellArg(@NotNull String arg) {
+        if (arg.matches("[A-Za-z0-9_./:=+-]+")) {
+            return arg;
+        }
+        return "'" + arg.replace("'", "''") + "'";
     }
 
     private static @NotNull String quoteArg(@NotNull String arg) {
