@@ -57,8 +57,7 @@
         <action
             id="HelionCoder.EditorCompleteCode"
             class="com.helioncoder.jetbrains.actions.CompleteCodeAction"
-            text="HelionCoder 补全当前位置"
-            icon="/icons/helion.svg">
+            text="HelionCoder 补全当前位置">
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
             <keyboard-shortcut keymap="$default" first-keystroke="alt BACK_SLASH"/>
         </action>

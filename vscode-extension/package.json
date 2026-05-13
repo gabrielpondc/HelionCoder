@@ -2,7 +2,7 @@
   "name": "helion-coder-vscode",
   "displayName": "HelionCoder",
   "description": "HelionCoder 本地 CLI 的 VS Code 集成，包含助手面板和行内补全。",
-  "version": "0.4.5",
+  "version": "0.4.501",
   "publisher": "GabrielPondC",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {

@@ -16,6 +16,7 @@
     recentHistory: [],
     recentHistoryTotal: 0,
     pendingPermissions: new Map(),
+    shouldAutoScroll: true,
   };
   const sendIcon =
     '<svg class="ui-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>';
@@ -30,6 +31,7 @@
   const pendingAssistantText = "正在生成回复...";
   const guidePromptPrefix =
     "请把下面内容作为对上一条正在处理任务的后续引导/补充要求，并在当前回答或下一步执行中考虑：";
+  const autoScrollBottomThreshold = 48;
   let markdownRenderer;
 
   const timeline = byId("timeline");
@@ -509,6 +511,14 @@
     true,
   );
 
+  timeline.addEventListener(
+    "scroll",
+    () => {
+      state.shouldAutoScroll = isTimelineAtBottom();
+    },
+    { passive: true },
+  );
+
   addPopover.addEventListener("click", (event) => {
     const button = event.target.closest("[data-menu-action]");
     if (!button) {
@@ -776,7 +786,7 @@
         pending: true,
       }),
     );
-    scrollToBottom();
+    scrollToBottom({ force: true });
   }
 
   function appendChunk(message) {
@@ -1496,7 +1506,7 @@
         ),
       );
     }
-    scrollToBottom();
+    scrollToBottom({ force: true });
   }
 
   function addPlanCard(bubble, plan) {
@@ -2558,9 +2568,22 @@
     return titles[mode] || "提问";
   }
 
-  function scrollToBottom() {
+  function isTimelineAtBottom() {
+    const distance =
+      timeline.scrollHeight - timeline.scrollTop - timeline.clientHeight;
+    return distance <= autoScrollBottomThreshold;
+  }
+
+  function scrollToBottom({ force = false } = {}) {
+    if (!force && !state.shouldAutoScroll) {
+      return;
+    }
     requestAnimationFrame(() => {
+      if (!force && !state.shouldAutoScroll) {
+        return;
+      }
       timeline.scrollTop = timeline.scrollHeight;
+      state.shouldAutoScroll = true;
     });
   }
 
