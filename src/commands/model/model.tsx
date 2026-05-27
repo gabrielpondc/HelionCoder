@@ -15,8 +15,8 @@ import { checkOpus1mAccess, checkSonnet1mAccess } from '../../utils/model/check1
 import { getDefaultMainLoopModelSetting, isOpus1mMergeEnabled, renderDefaultModelSetting } from '../../utils/model/model.js';
 import { isModelAllowed } from '../../utils/model/modelAllowlist.js';
 import { validateModel } from '../../utils/model/validateModel.js';
-import { getGlobalConfig, saveGlobalConfig } from '../../utils/config.js';
-import { fetchOpenAIModels, getPrimaryOpenAIConfig } from '../../utils/openaiConfig.js';
+import { saveGlobalConfig } from '../../utils/config.js';
+import { fetchOpenAIModels, getOpenAIModelOptionsCacheKeyHash, getPrimaryOpenAIConfig, isOpenAIModelOptionsCacheUsable } from '../../utils/openaiConfig.js';
 function ModelPickerWrapper(t0) {
   const $ = _c(18);
   const {
@@ -286,22 +286,23 @@ async function refreshOpenAIModelOptionsCache(): Promise<string | undefined> {
       ...current,
       openaiModelOptionsCache: models,
       openaiModelOptionsCacheBaseUrl: config.baseUrl,
-      openaiModelOptionsCacheUpdatedAt: Date.now()
+      openaiModelOptionsCacheUpdatedAt: Date.now(),
+      openaiModelOptionsCacheKeyHash: getOpenAIModelOptionsCacheKeyHash(config.apiKey)
     }));
     if (models.length === 0) {
       return '当前接口没有返回模型列表，可以通过 /model <模型名> 手动指定。';
     }
     return undefined;
   } catch (error) {
-    const cachedBaseUrl = getGlobalConfig().openaiModelOptionsCacheBaseUrl;
-    if (cachedBaseUrl && cachedBaseUrl !== config.baseUrl) {
+    if (!isOpenAIModelOptionsCacheUsable()) {
       saveGlobalConfig(current => ({
         ...current,
         openaiModelOptionsCache: undefined,
         openaiModelOptionsCacheBaseUrl: undefined,
-        openaiModelOptionsCacheUpdatedAt: undefined
+        openaiModelOptionsCacheUpdatedAt: undefined,
+        openaiModelOptionsCacheKeyHash: undefined
       }));
-      return `读取 /v1/models 失败：${getErrorMessage(error)}。当前 Base URL 与缓存不一致，已不使用旧模型列表。`;
+      return `读取 /v1/models 失败：${getErrorMessage(error)}。当前接口与缓存不一致，已不使用旧模型列表。`;
     }
     return `读取 /v1/models 失败：${getErrorMessage(error)}。已使用缓存或本地默认模型。`;
   }

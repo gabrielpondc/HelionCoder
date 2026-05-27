@@ -18,8 +18,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -33,11 +36,15 @@ public final class HelionModelResolver {
         this.project = project;
     }
 
-    public record ModelCandidate(String id, String label, String source, String description) {
+    public record ModelCandidate(String id, String label, String source, String description, Integer contextWindow) {
     }
 
     public void invalidate() {
         cachedModels = null;
+    }
+
+    public @NotNull String defaultModelId() {
+        return defaultModelInfo().id();
     }
 
     public @NotNull List<ModelCandidate> listModels(boolean refreshApi) {
@@ -50,26 +57,28 @@ public final class HelionModelResolver {
 
 
         List<ModelCandidate> models = new ArrayList<>();
+        EndpointConfig endpoint = endpointConfig();
         DefaultModelInfo defaultModel = defaultModelInfo();
         models.add(new ModelCandidate(
             "default",
             "命令行默认：" + defaultModel.id(),
             defaultModel.source(),
-            "不传 --model，让 HelionCoder CLI 按当前配置解析默认模型。"
+            "不传 --model，让 HelionCoder CLI 按当前配置解析默认模型。",
+            null
         ));
 
         if (refreshApi) {
-            models.addAll(fetchApiModels());
+            models.addAll(fetchApiModels(endpoint));
         }
         addConfiguredModels(models);
         addEnvironmentModels(models);
-        addFileModels(models);
+        addFileModels(models, endpoint);
 
         List<ModelCandidate> deduped = dedupe(models);
         String selected = HelionSettings.model();
         if (!selected.isBlank() && deduped.stream().noneMatch(model -> model.id().equalsIgnoreCase(selected))) {
             List<ModelCandidate> withSelected = new ArrayList<>();
-            withSelected.add(new ModelCandidate(selected, selected, "当前选择", "当前 JetBrains 插件选择的模型。"));
+            withSelected.add(new ModelCandidate(selected, selected, "当前选择", "当前 JetBrains 插件选择的模型。", null));
             withSelected.addAll(deduped);
             deduped = List.copyOf(withSelected);
         }
@@ -97,18 +106,17 @@ public final class HelionModelResolver {
         }
     }
 
-    private void addFileModels(@NotNull List<ModelCandidate> models) {
+    private void addFileModels(@NotNull List<ModelCandidate> models, @NotNull EndpointConfig endpoint) {
         for (Path file : configFileCandidates()) {
             JsonObject data = readJson(file);
             if (data == null) {
                 continue;
             }
-            collectModelsFromObject(data, shortPath(file), models);
+            collectModelsFromObject(data, shortPath(file), models, endpoint);
         }
     }
 
-    private @NotNull List<ModelCandidate> fetchApiModels() {
-        EndpointConfig endpoint = endpointConfig();
+    private @NotNull List<ModelCandidate> fetchApiModels(@NotNull EndpointConfig endpoint) {
         if (endpoint.apiKey() == null) {
             return List.of();
         }
@@ -138,24 +146,27 @@ public final class HelionModelResolver {
                 return List.of();
             }
 
-            List<String> ids = new ArrayList<>();
+            List<ModelCandidate> result = new ArrayList<>();
+            String source = URI.create(url).getHost();
             for (JsonElement item : rawModels) {
                 String id = null;
+                Integer contextWindow = null;
                 if (item.isJsonPrimitive()) {
                     id = item.getAsString();
                 } else if (item.isJsonObject() && item.getAsJsonObject().has("id")) {
-                    id = string(item.getAsJsonObject(), "id");
+                    JsonObject object = item.getAsJsonObject();
+                    id = string(object, "id");
+                    contextWindow = contextWindow(object);
                 }
                 if (id != null && !id.isBlank()) {
-                    ids.add(id.trim());
+                    String trimmed = id.trim();
+                    String description = contextWindow == null
+                        ? "从 OpenAI 兼容 /models 端点检测到。"
+                        : "从 OpenAI 兼容 /models 端点检测到，最长上下文 " + formatTokenCount(contextWindow) + "。";
+                    result.add(new ModelCandidate(trimmed, trimmed, source, description, contextWindow));
                 }
             }
-            ids.sort(String::compareTo);
-            String source = URI.create(url).getHost();
-            List<ModelCandidate> result = new ArrayList<>();
-            for (String id : ids) {
-                result.add(new ModelCandidate(id, id, source, "从 OpenAI 兼容 /models 端点检测到。"));
-            }
+            result.sort((left, right) -> left.id().compareTo(right.id()));
             return result;
         } catch (IOException | InterruptedException | URISyntaxException | RuntimeException error) {
             if (error instanceof InterruptedException) {
@@ -175,7 +186,7 @@ public final class HelionModelResolver {
             }
             JsonObject openai = object(data, "openai");
             fileApiKey = firstString(fileApiKey, string(data, "openaiApiKey"), string(data, "primaryApiKey"), string(data, "apiKey"), string(data, "api_key"), string(openai, "apiKey"), string(openai, "api_key"), string(openai, "token"));
-            fileBaseUrl = firstString(fileBaseUrl, string(data, "openaiBaseUrl"), string(data, "openaiModelOptionsCacheBaseUrl"), string(data, "baseUrl"), string(data, "baseURL"), string(data, "apiBaseUrl"), string(openai, "baseUrl"), string(openai, "baseURL"), string(openai, "apiBaseUrl"));
+            fileBaseUrl = firstString(fileBaseUrl, string(data, "openaiBaseUrl"), string(data, "baseUrl"), string(data, "baseURL"), string(data, "apiBaseUrl"), string(openai, "baseUrl"), string(openai, "baseURL"), string(openai, "apiBaseUrl"));
         }
 
         return new EndpointConfig(
@@ -248,13 +259,16 @@ public final class HelionModelResolver {
     private static void collectModelsFromObject(
         @NotNull JsonObject data,
         @NotNull String source,
-        @NotNull List<ModelCandidate> models
+        @NotNull List<ModelCandidate> models,
+        @NotNull EndpointConfig endpoint
     ) {
         addModel(models, string(data, "model"), source);
         addModel(models, string(data, "openaiModel"), source);
         addModel(models, string(data, "openaiSmallModel"), source);
         addModel(models, string(data, "openaiMultimodalModel"), source);
-        addArrayModels(models, array(data, "openaiModelOptionsCache"), source + " /v1/models 缓存");
+        if (isUsableModelOptionsCache(data, endpoint)) {
+            addArrayModels(models, array(data, "openaiModelOptionsCache"), source + " /v1/models 缓存");
+        }
         addArrayModels(models, array(data, "availableModels"), source + " 可用模型");
         addArrayModels(models, array(data, "models"), source + " 模型");
 
@@ -275,6 +289,48 @@ public final class HelionModelResolver {
         }
     }
 
+    private static boolean isUsableModelOptionsCache(@NotNull JsonObject data, @NotNull EndpointConfig endpoint) {
+        JsonArray cache = array(data, "openaiModelOptionsCache");
+        if (cache == null || cache.isEmpty()) {
+            return false;
+        }
+
+        String cacheBaseUrl = normalizeBaseUrl(string(data, "openaiModelOptionsCacheBaseUrl"));
+        String endpointBaseUrl = normalizeBaseUrl(endpoint.baseUrl());
+        if (cacheBaseUrl == null || endpointBaseUrl == null || !cacheBaseUrl.equals(endpointBaseUrl)) {
+            return false;
+        }
+
+        String cacheKeyHash = string(data, "openaiModelOptionsCacheKeyHash");
+        return cacheKeyHash != null && cacheKeyHash.equals(modelOptionsCacheKeyHash(endpoint.apiKey()));
+    }
+
+    private static @Nullable String normalizeBaseUrl(@Nullable String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        String trimmed = value.trim();
+        try {
+            URI uri = new URI(trimmed);
+            String path = uri.getPath() == null ? "" : uri.getPath().replaceAll("/+$", "");
+            return new URI(uri.getScheme(), uri.getUserInfo(), uri.getHost(), uri.getPort(), path, uri.getQuery(), uri.getFragment())
+                .toString()
+                .replaceAll("/+$", "");
+        } catch (URISyntaxException | RuntimeException ignored) {
+            return trimmed.replaceAll("/+$", "");
+        }
+    }
+
+    private static @NotNull String modelOptionsCacheKeyHash(@Nullable String apiKey) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                .digest((apiKey == null ? "" : apiKey).getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException error) {
+            throw new IllegalStateException("SHA-256 is unavailable", error);
+        }
+    }
+
     private static void addArrayModels(@NotNull List<ModelCandidate> models, @Nullable JsonArray array, @NotNull String source) {
         if (array == null) {
             return;
@@ -283,7 +339,12 @@ public final class HelionModelResolver {
             if (item.isJsonPrimitive()) {
                 addModel(models, item.getAsString(), source);
             } else if (item.isJsonObject()) {
-                addModel(models, string(item.getAsJsonObject(), "id"), source);
+                JsonObject object = item.getAsJsonObject();
+                String id = string(object, "id");
+                if (id != null && !id.isBlank()) {
+                    Integer contextWindow = contextWindow(object);
+                    models.add(new ModelCandidate(id.trim(), id.trim(), source, null, contextWindow));
+                }
             }
         }
     }
@@ -291,14 +352,80 @@ public final class HelionModelResolver {
     private static void addModel(@NotNull List<ModelCandidate> models, @Nullable String value, @NotNull String source) {
         String id = value == null ? "" : value.trim();
         if (!id.isEmpty()) {
-            models.add(new ModelCandidate(id, id, source, null));
+            models.add(new ModelCandidate(id, id, source, null, null));
         }
+    }
+
+    private static @Nullable Integer contextWindow(@Nullable JsonObject object) {
+        if (object == null) {
+            return null;
+        }
+        Integer direct = firstPositiveNumber(
+            object.get("max_input_tokens"),
+            object.get("context_length"),
+            object.get("context_window"),
+            object.get("contextWindow"),
+            object.get("max_context_length"),
+            object.get("max_context_tokens"),
+            object.get("max_model_len"),
+            object.get("input_token_limit")
+        );
+        if (direct != null) {
+            return direct;
+        }
+        for (String key : List.of("metadata", "capabilities", "limits", "model_info")) {
+            JsonObject nested = object(object, key);
+            Integer nestedValue = contextWindow(nested);
+            if (nestedValue != null) {
+                return nestedValue;
+            }
+        }
+        Integer maxTokens = firstPositiveNumber(object.get("max_tokens"));
+        return maxTokens != null && maxTokens >= 100_000 ? maxTokens : null;
+    }
+
+    private static @Nullable Integer firstPositiveNumber(@Nullable JsonElement... values) {
+        for (JsonElement value : values) {
+            if (value == null || !value.isJsonPrimitive()) {
+                continue;
+            }
+            try {
+                double parsed = value.getAsDouble();
+                if (Double.isFinite(parsed) && parsed > 0) {
+                    return (int) Math.round(parsed);
+                }
+            } catch (NumberFormatException | UnsupportedOperationException ignored) {
+            }
+        }
+        return null;
+    }
+
+    private static @NotNull String formatTokenCount(int tokens) {
+        if (tokens >= 1_000_000) {
+            return (Math.round(tokens / 100_000.0) / 10.0) + "M";
+        }
+        if (tokens >= 1_000) {
+            return Math.round(tokens / 1_000.0) + "K";
+        }
+        return Integer.toString(tokens);
     }
 
     private static @NotNull List<ModelCandidate> dedupe(@NotNull List<ModelCandidate> models) {
         Map<String, ModelCandidate> seen = new LinkedHashMap<>();
         for (ModelCandidate model : models) {
-            seen.putIfAbsent(model.id().toLowerCase(Locale.ROOT), model);
+            String key = model.id().toLowerCase(Locale.ROOT);
+            ModelCandidate existing = seen.get(key);
+            if (existing == null) {
+                seen.put(key, model);
+            } else if (existing.contextWindow() == null && model.contextWindow() != null) {
+                seen.put(key, new ModelCandidate(
+                    existing.id(),
+                    existing.label(),
+                    existing.source(),
+                    existing.description() == null ? model.description() : existing.description(),
+                    model.contextWindow()
+                ));
+            }
         }
         return List.copyOf(seen.values());
     }

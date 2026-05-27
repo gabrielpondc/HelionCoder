@@ -6,17 +6,27 @@ cd "$ROOT"
 
 BUILD_TARGET="${1:-all}"
 WINDOWS_ICON="src/logo/logo.ico"
+VERSION="$(node -p "require('./package.json').version")"
+VSCODE_VSIX="vscode-extension/helioncoder-vscode-${VERSION}.vsix"
+JETBRAINS_ZIP="jetbrains-plugin/build/distributions/helion-coder-jetbrains-${VERSION}.zip"
 
-if ! command -v bun >/dev/null 2>&1; then
+NEEDS_BUN=0
+case "$BUILD_TARGET" in
+  all|native|windows)
+    NEEDS_BUN=1
+    ;;
+esac
+
+if [[ "$NEEDS_BUN" == "1" ]] && ! command -v bun >/dev/null 2>&1; then
   echo "Error: bun is required to build native executables." >&2
   exit 1
 fi
 
 case "$BUILD_TARGET" in
-  all|native|windows|vscode|npm)
+  all|native|windows|vscode|npm|jetbrains)
     ;;
   *)
-    echo "Usage: $0 [all|native|windows|vscode|npm]" >&2
+    echo "Usage: $0 [all|native|windows|vscode|npm|jetbrains]" >&2
     exit 1
     ;;
 esac
@@ -76,8 +86,42 @@ build_native() {
   bun "${args[@]}"
 }
 
-echo "==> Building CLI bundle"
-npm run build
+find_jetbrains_jbr21_home() {
+  local arch
+  arch="$(uname -m)"
+  case "$arch" in
+    arm64|aarch64)
+      arch="aarch64"
+      ;;
+    x86_64|amd64)
+      arch="x86_64"
+      ;;
+  esac
+
+  find "$HOME/.gradle/caches" \
+    -path "*idea-2025.3.3-${arch}/jbr/Contents/Home/bin/java" \
+    -print -quit | sed 's#/bin/java$##'
+}
+
+build_jetbrains_plugin() {
+  local jbr21_home
+  jbr21_home="$(find_jetbrains_jbr21_home)"
+  if [[ -z "$jbr21_home" ]]; then
+    echo "未找到 IDEA 2025.3.3 自带的 JBR 21" >&2
+    exit 1
+  fi
+
+  echo "==> Using JetBrains JBR 21: $jbr21_home"
+  (
+    cd jetbrains-plugin
+    JAVA_HOME="$jbr21_home" ./gradlew --no-daemon clean buildPlugin
+  )
+}
+
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "native" || "$BUILD_TARGET" == "windows" || "$BUILD_TARGET" == "npm" ]]; then
+  echo "==> Building CLI bundle"
+  npm run build
+fi
 
 if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "npm" ]]; then
   echo "==> Packaging npm distribution"
@@ -100,28 +144,44 @@ if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "vscode" ]]; then
   npm run package:vscode
 fi
 
-echo "==> Release artifacts"
-if [[ "$BUILD_TARGET" == "windows" ]]; then
-  ls -lh dist/helion-coder-windows-x64.exe
-else
-  ls -lh \
-    dist/helion-coder \
-    dist/helion-coder-darwin-arm64 \
-    dist/helion-coder-darwin-x64 \
-    dist/helion-coder-linux-x64 \
-    dist/helion-coder-linux-arm64 \
-    dist/helion-coder-windows-x64.exe \
-    vscode-extension/helion-coder-vscode-0.1.0.vsix
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "jetbrains" ]]; then
+  echo "==> Packaging JetBrains plugin"
+  build_jetbrains_plugin
 fi
 
+echo "==> Release artifacts"
+ARTIFACTS=()
+FILE_ARTIFACTS=()
+
 if [[ "$BUILD_TARGET" == "windows" ]]; then
-  file dist/helion-coder-windows-x64.exe
-else
-  file \
-    dist/helion-coder \
-    dist/helion-coder-darwin-arm64 \
-    dist/helion-coder-darwin-x64 \
-    dist/helion-coder-linux-x64 \
-    dist/helion-coder-linux-arm64 \
+  ARTIFACTS+=(dist/helion-coder-windows-x64.exe)
+  FILE_ARTIFACTS+=(dist/helion-coder-windows-x64.exe)
+fi
+
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "native" ]]; then
+  ARTIFACTS+=(
+    dist/helion-coder
+    dist/helion-coder-darwin-arm64
+    dist/helion-coder-darwin-x64
+    dist/helion-coder-linux-x64
+    dist/helion-coder-linux-arm64
     dist/helion-coder-windows-x64.exe
+  )
+  FILE_ARTIFACTS+=("${ARTIFACTS[@]}")
+fi
+
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "vscode" ]]; then
+  ARTIFACTS+=("$VSCODE_VSIX")
+fi
+
+if [[ "$BUILD_TARGET" == "all" || "$BUILD_TARGET" == "jetbrains" ]]; then
+  ARTIFACTS+=("$JETBRAINS_ZIP")
+fi
+
+if [[ "${#ARTIFACTS[@]}" -gt 0 ]]; then
+  ls -lh "${ARTIFACTS[@]}"
+fi
+
+if [[ "${#FILE_ARTIFACTS[@]}" -gt 0 ]]; then
+  file "${FILE_ARTIFACTS[@]}"
 fi

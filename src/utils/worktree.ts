@@ -48,6 +48,26 @@ import { isInITerm2 } from './swarm/backends/detection.js'
 
 const VALID_WORKTREE_SLUG_SEGMENT = /^[a-zA-Z0-9._-]+$/
 const MAX_WORKTREE_SLUG_LENGTH = 64
+const AGENT_WORKTREE_UNAVAILABLE_MESSAGE =
+  'Cannot create agent worktree: not in a git repository and no WorktreeCreate hooks are configured. ' +
+  'Configure WorktreeCreate/WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.'
+
+export class AgentWorktreeUnavailableError extends Error {
+  constructor() {
+    super(AGENT_WORKTREE_UNAVAILABLE_MESSAGE)
+    this.name = 'AgentWorktreeUnavailableError'
+  }
+}
+
+export function isAgentWorktreeUnavailableError(
+  error: unknown,
+): error is AgentWorktreeUnavailableError {
+  return (
+    error instanceof AgentWorktreeUnavailableError ||
+    (error instanceof Error &&
+      error.message === AGENT_WORKTREE_UNAVAILABLE_MESSAGE)
+  )
+}
 
 /**
  * Validates a worktree slug to prevent path traversal and directory escape.
@@ -926,10 +946,7 @@ export async function createAgentWorktree(slug: string): Promise<{
   // periodic cleanup (which scans the canonical root) never finds them.
   const gitRoot = findCanonicalGitRoot(getCwd())
   if (!gitRoot) {
-    throw new Error(
-      'Cannot create agent worktree: not in a git repository and no WorktreeCreate hooks are configured. ' +
-        'Configure WorktreeCreate/WorktreeRemove hooks in settings.json to use worktree isolation with other VCS systems.',
-    )
+    throw new AgentWorktreeUnavailableError()
   }
 
   const { worktreePath, worktreeBranch, headCommit, existed } =

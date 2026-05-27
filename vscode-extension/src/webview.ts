@@ -17,7 +17,7 @@ import {
   getEditorSnapshot,
 } from "./editorContext";
 import { isSupportedCompletionDocument } from "./completion";
-import type { ModelResolver } from "./modelResolver";
+import type { ModelCandidate, ModelResolver } from "./modelResolver";
 
 type WebviewMessage =
   | { type: "ready" }
@@ -51,6 +51,7 @@ type WebviewMessage =
   | { type: "selectThinking"; mode: ThinkingMode }
   | { type: "toggleIncludeContext"; value: boolean }
   | { type: "togglePlanMode"; value: boolean }
+  | { type: "executePlan"; plan: string[] }
   | { type: "showPlugins" }
   | { type: "showHistory" }
   | { type: "acceptChanges"; reviewId: string }
@@ -104,6 +105,11 @@ interface HistoryMessage {
   role: "user" | "assistant";
   text: string;
   timestamp?: number;
+}
+
+interface RunAssistantPromptOptions {
+  forcePlanMode?: boolean;
+  permissionModeOverride?: PermissionMode;
 }
 
 export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
@@ -217,6 +223,9 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
         return;
       case "togglePlanMode":
         await this.setPlanMode(message.value);
+        return;
+      case "executePlan":
+        await this.executePlan(message.plan);
         return;
       case "showPlugins":
         await this.showPlugins();
@@ -350,6 +359,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     displayPrompt?: string,
     attachments: AttachmentDisplay[] = [],
     editPrompt?: string,
+    options: RunAssistantPromptOptions = {},
   ): Promise<void> {
     const trimmed = prompt.trim();
     if (!trimmed) {
@@ -366,14 +376,17 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     this.runCts = new vscode.CancellationTokenSource();
     const requestId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const config = vscode.workspace.getConfiguration("helionCoder");
-    const permissionMode = config.get<PermissionMode>(
+    const configuredPermissionMode = config.get<PermissionMode>(
       "permissionMode",
       "default",
     );
+    const permissionMode =
+      options.permissionModeOverride ?? configuredPermissionMode;
     const thinkingMode = config.get<ThinkingMode>("thinking", "");
     const planMode =
-      config.get<boolean>("webview.planMode", false) ||
-      permissionMode === "plan";
+      options.forcePlanMode ??
+      (config.get<boolean>("webview.planMode", false) ||
+        permissionMode === "plan");
     const imageContext = await this.materializeImageAttachmentRefs(attachments);
     const promptWithAttachments = [imageContext.prompt, trimmed]
       .filter(Boolean)
@@ -907,10 +920,72 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async setPlanMode(value: boolean): Promise<void> {
-    await vscode.workspace
-      .getConfiguration("helionCoder")
-      .update("webview.planMode", value, vscode.ConfigurationTarget.Global);
+    const config = vscode.workspace.getConfiguration("helionCoder");
+    await config.update(
+      "webview.planMode",
+      value,
+      vscode.ConfigurationTarget.Global,
+    );
+    if (!value && config.get<PermissionMode>("permissionMode", "default") === "plan") {
+      await config.update(
+        "permissionMode",
+        "default",
+        vscode.ConfigurationTarget.Global,
+      );
+    }
     await this.refreshContext();
+  }
+
+  private async executePlan(plan: string[]): Promise<void> {
+    const items = plan.map((item) => item.trim()).filter(Boolean);
+    if (items.length === 0) {
+      return;
+    }
+
+    const config = vscode.workspace.getConfiguration("helionCoder");
+    const currentPermissionMode = config.get<PermissionMode>(
+      "permissionMode",
+      "default",
+    );
+    const executionPermissionMode =
+      currentPermissionMode === "plan" ? "default" : currentPermissionMode;
+
+    await config.update(
+      "webview.planMode",
+      false,
+      vscode.ConfigurationTarget.Global,
+    );
+    if (currentPermissionMode === "plan") {
+      await config.update(
+        "permissionMode",
+        "default",
+        vscode.ConfigurationTarget.Global,
+      );
+    }
+    await this.refreshContext();
+
+    const approvedPlan = items
+      .map((item, index) => `${index + 1}. ${item}`)
+      .join("\n");
+    const prompt = [
+      "用户已经批准下面的计划。现在请在当前工作区执行它。",
+      "实际修改需要变更的文件，并运行合适的验证。不要只复述计划。",
+      "",
+      "Approved plan:",
+      approvedPlan,
+    ].join("\n");
+
+    await this.runAssistantPrompt(
+      prompt,
+      "ask",
+      "执行已批准计划",
+      [],
+      prompt,
+      {
+        forcePlanMode: false,
+        permissionModeOverride: executionPermissionMode,
+      },
+    );
   }
 
   private async showPlugins(): Promise<void> {
@@ -1418,9 +1493,16 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
       true,
     );
     const planMode = config.get<boolean>("webview.planMode", false);
-    const contextEstimate = estimateContextWindow(snapshot);
     const historyEntries = readHistoryEntries(getWorkspaceCwd());
     const recentHistory = this.getRecentHistorySummaries();
+    const contextEstimate = estimateContextWindow(
+      snapshot,
+      resolveContextWindowTotal(
+        models,
+        selectedModel,
+        this.modelResolver.getDefaultModelInfo().id,
+      ),
+    );
 
     this.post({
       type: "context",
@@ -2024,6 +2106,7 @@ function parsePlan(text: string): string[] {
 
 function estimateContextWindow(
   snapshot: ReturnType<typeof getEditorSnapshot>,
+  total: number,
 ): {
   used: number;
   total: number;
@@ -2034,12 +2117,29 @@ function estimateContextWindow(
     (snapshot?.prefix.length ?? 0) +
     (snapshot?.suffix.length ?? 0);
   const used = Math.max(0, Math.ceil(textLength / 4));
-  const total = 258_000;
   return {
     used,
     total,
     percent: Math.min(99, Math.round((used / total) * 100)),
   };
+}
+
+function resolveContextWindowTotal(
+  models: ModelCandidate[],
+  selectedModel: string,
+  defaultModel: string,
+): number {
+  const target = selectedModel === "default" ? defaultModel : selectedModel;
+  const model = models.find(
+    (candidate) => candidate.id.toLowerCase() === target.toLowerCase(),
+  );
+  if (model?.contextWindow && model.contextWindow > 0) {
+    return model.contextWindow;
+  }
+  if (/\[1m\]\s*$/i.test(target)) {
+    return 1_000_000;
+  }
+  return 258_000;
 }
 
 function looksBinary(fsPath: string): boolean {
@@ -2058,6 +2158,7 @@ interface HistoryEntry {
   project?: string;
   sessionId?: string;
   filePath?: string;
+  eventsPath?: string;
 }
 
 interface NativeHistoryTurn {
@@ -2328,6 +2429,7 @@ function readHistoryEntries(cwd: string): HistoryEntry[] {
   const helionHome = getHelionConfigHomeDir();
   const entries: HistoryEntry[] = [];
 
+  collectRunHistoryEntries(helionHome, cwd, entries);
   collectHistoryJsonl(path.join(helionHome, "history.jsonl"), cwd, entries);
 
   const projectsDir = path.join(helionHome, "projects");
@@ -2348,7 +2450,9 @@ function readHistoryEntries(cwd: string): HistoryEntry[] {
   const seen = new Set<string>();
   return entries
     .filter((entry) => {
-      const key = `${entry.sessionId ?? ""}:${entry.display}`;
+      const key = entry.sessionId
+        ? `session:${entry.sessionId}`
+        : `${entry.eventsPath ?? entry.filePath ?? ""}:${entry.display}`;
       if (seen.has(key)) {
         return false;
       }
@@ -2357,6 +2461,58 @@ function readHistoryEntries(cwd: string): HistoryEntry[] {
     })
     .sort((left, right) => (right.timestamp ?? 0) - (left.timestamp ?? 0))
     .slice(0, 120);
+}
+
+function collectRunHistoryEntries(
+  helionHome: string,
+  cwd: string,
+  entries: HistoryEntry[],
+): void {
+  const runsDir = path.join(helionHome, "runs");
+  if (!safeIsDirectory(runsDir)) {
+    return;
+  }
+
+  for (const runId of fs.readdirSync(runsDir)) {
+    const runDir = path.join(runsDir, runId);
+    if (!safeIsDirectory(runDir)) {
+      continue;
+    }
+    const metaPath = path.join(runDir, "meta.json");
+    const eventsPath = path.join(runDir, "events.jsonl");
+    try {
+      const meta = JSON.parse(
+        fs.readFileSync(metaPath, "utf8"),
+      ) as Record<string, unknown>;
+      if (meta.deleted_at || meta.hidden === true) {
+        continue;
+      }
+      const project = firstHistoryText(meta.cwd);
+      if (!isRelatedProject(project, cwd)) {
+        continue;
+      }
+      const eventSummary = summarizeRunEvents(eventsPath);
+      const display = stripInternalPromptText(
+        firstHistoryText(meta.name, meta.prompt, eventSummary.firstUserText) ??
+          "",
+      );
+      if (!display || isMetaHistoryText(display)) {
+        continue;
+      }
+      entries.push({
+        display: display.length > 220 ? `${display.slice(0, 220)}...` : display,
+        timestamp:
+          parseHistoryTimestamp(meta.ended_at) ??
+          parseHistoryTimestamp(eventSummary.lastTs) ??
+          parseHistoryTimestamp(meta.started_at),
+        project,
+        sessionId: firstHistoryText(meta.session_id),
+        eventsPath,
+      });
+    } catch {
+      // Ignore partial or non-OpenCovibe run folders.
+    }
+  }
 }
 
 function collectHistoryJsonl(
@@ -2407,6 +2563,13 @@ function parseHistoryLine(line: string): HistoryEntry | undefined {
 }
 
 function readHistoryConversation(entry: HistoryEntry): HistoryMessage[] {
+  if (entry.eventsPath && fs.existsSync(entry.eventsPath)) {
+    const messages = readRunEventConversation(entry.eventsPath);
+    if (messages.length > 0) {
+      return messages;
+    }
+  }
+
   const sessionPath =
     findSessionFile(entry.sessionId) ??
     (entry.filePath && path.basename(entry.filePath) !== "history.jsonl"
@@ -2433,6 +2596,77 @@ function readHistoryConversation(entry: HistoryEntry): HistoryMessage[] {
     }
   }
   return messages;
+}
+
+function readRunEventConversation(eventsPath: string): HistoryMessage[] {
+  const messages: HistoryMessage[] = [];
+  for (const line of fs.readFileSync(eventsPath, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const envelope = JSON.parse(line) as Record<string, unknown>;
+      const event =
+        envelope._bus === true &&
+        envelope.event &&
+        typeof envelope.event === "object"
+          ? (envelope.event as Record<string, unknown>)
+          : envelope;
+      const type = firstHistoryText(event.type);
+      if (type !== "user_message" && type !== "message_complete") {
+        continue;
+      }
+      const text = stripInternalPromptText(firstHistoryText(event.text) ?? "");
+      if (!text || isMetaHistoryText(text)) {
+        continue;
+      }
+      messages.push({
+        role: type === "user_message" ? "user" : "assistant",
+        text,
+        timestamp: parseHistoryTimestamp(envelope.ts),
+      });
+    } catch {
+      // Ignore malformed event lines.
+    }
+  }
+  return messages;
+}
+
+function summarizeRunEvents(eventsPath: string): {
+  firstUserText?: string;
+  lastTs?: string;
+} {
+  const summary: { firstUserText?: string; lastTs?: string } = {};
+  if (!fs.existsSync(eventsPath)) {
+    return summary;
+  }
+  for (const line of fs.readFileSync(eventsPath, "utf8").split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+    try {
+      const envelope = JSON.parse(line) as Record<string, unknown>;
+      const event =
+        envelope._bus === true &&
+        envelope.event &&
+        typeof envelope.event === "object"
+          ? (envelope.event as Record<string, unknown>)
+          : envelope;
+      if (typeof envelope.ts === "string") {
+        summary.lastTs = envelope.ts;
+      }
+      if (
+        !summary.firstUserText &&
+        event.type === "user_message" &&
+        typeof event.text === "string"
+      ) {
+        summary.firstUserText = event.text;
+      }
+    } catch {
+      // Ignore malformed event lines.
+    }
+  }
+  return summary;
 }
 
 function parseConversationLine(line: string): HistoryMessage | undefined {
@@ -2503,7 +2737,7 @@ function findSessionFile(sessionId: string | undefined): string | undefined {
   if (!sessionId) {
     return undefined;
   }
-  const projectsDir = path.join(os.homedir(), ".helioncoder", "projects");
+  const projectsDir = path.join(getHelionConfigHomeDir(), "projects");
   if (!fs.existsSync(projectsDir)) {
     return undefined;
   }

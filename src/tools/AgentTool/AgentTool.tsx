@@ -39,7 +39,7 @@ import { isInProcessTeammate } from '../../utils/teammateContext.js';
 import { teleportToRemote } from '../../utils/teleport.js';
 import { getAssistantMessageContentLength } from '../../utils/tokens.js';
 import { createAgentId } from '../../utils/uuid.js';
-import { createAgentWorktree, hasWorktreeChanges, removeAgentWorktree } from '../../utils/worktree.js';
+import { createAgentWorktree, hasWorktreeChanges, isAgentWorktreeUnavailableError, removeAgentWorktree } from '../../utils/worktree.js';
 import { BASH_TOOL_NAME } from '../BashTool/toolName.js';
 import { BackgroundHint } from '../BashTool/UI.js';
 import { FILE_READ_TOOL_NAME } from '../FileReadTool/prompt.js';
@@ -596,7 +596,17 @@ export const AgentTool = buildTool({
     } | null = null;
     if (effectiveIsolation === 'worktree') {
       const slug = `agent-${earlyAgentId.slice(0, 8)}`;
-      worktreeInfo = await createAgentWorktree(slug);
+      try {
+        worktreeInfo = await createAgentWorktree(slug);
+      } catch (err) {
+        if (!isAgentWorktreeUnavailableError(err)) {
+          throw err;
+        }
+        logForDebugging(
+          `Agent worktree isolation unavailable; running agent in current directory: ${errorMessage(err)}`,
+          { level: 'warn' },
+        );
+      }
     }
 
     // Fork + worktree: inject a notice telling the child to translate paths

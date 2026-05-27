@@ -1,4 +1,5 @@
 import type { LocalCommandCall } from '../../types/command.js'
+import { gracefulShutdown } from '../../utils/gracefulShutdown.js'
 import { maybeUpdateCurrentCliFromRelease } from '../../utils/helionReleaseUpdater.js'
 
 export const call: LocalCommandCall = async () => {
@@ -15,7 +16,11 @@ export const call: LocalCommandCall = async () => {
 	})
 
 	if (result.status === 'updated') {
-		lines.push('更新已安装。请重启 CLI 或 Web PTY 服务后使用新版本。')
+		lines.push('更新已安装，正在重启 CLI 以使用新版本。')
+		scheduleShutdown()
+	} else if (result.status === 'restart_scheduled') {
+		lines.push('更新已准备好，正在重启 CLI 以完成替换。')
+		scheduleShutdown()
 	} else if (result.status === 'skipped') {
 		lines.push(
 			'未执行更新。请确认当前运行的是 helion-coder 原生二进制，或设置 HELION_CLI_BIN 指向它。',
@@ -30,4 +35,10 @@ export const call: LocalCommandCall = async () => {
 	lines.push(`二进制：${result.binaryPath}`)
 
 	return { type: 'text', value: lines.join('\n') }
+}
+
+function scheduleShutdown(): void {
+	setTimeout(() => {
+		void gracefulShutdown(0)
+	}, 300).unref()
 }

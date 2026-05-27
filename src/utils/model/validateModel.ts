@@ -3,7 +3,7 @@ import { MODEL_ALIASES } from './aliases.js'
 import { isModelAllowed } from './modelAllowlist.js'
 import { getAPIProvider } from './providers.js'
 import { sideQuery } from '../sideQuery.js'
-import { getGlobalConfig } from '../config.js'
+import { getValidOpenAIModelOptionsCache } from '../openaiConfig.js'
 import {
   NotFoundError,
   APIError,
@@ -48,7 +48,7 @@ export async function validateModel(
   }
 
   if (
-    (getGlobalConfig().openaiModelOptionsCache ?? []).some(
+    getValidOpenAIModelOptionsCache().some(
       model => model.trim().toLowerCase() === lowerModel,
     )
   ) {

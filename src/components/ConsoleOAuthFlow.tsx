@@ -9,6 +9,7 @@ import {
   DEFAULT_OPENAI_BASE_URL,
   DEFAULT_OPENAI_ENDPOINT_MODE,
   fetchOpenAIModels,
+  getOpenAIModelOptionsCacheKeyHash,
   getPrimaryOpenAIConfig,
   type OpenAIEndpointMode,
 } from '../utils/openaiConfig.js'
@@ -312,6 +313,8 @@ export function ConsoleOAuthFlow({
       await saveApiKey(trimmedApiKey)
     }
 
+    const effectivePrimaryApiKey = trimmedApiKey || getPrimaryOpenAIConfig().apiKey
+
     saveGlobalConfig(current => ({
       ...current,
       openaiBaseUrl: trimmedBaseUrl || undefined,
@@ -329,6 +332,10 @@ export function ConsoleOAuthFlow({
         primaryModelOptions.length > 0
           ? Date.now()
           : current.openaiModelOptionsCacheUpdatedAt,
+      openaiModelOptionsCacheKeyHash:
+        primaryModelOptions.length > 0
+          ? getOpenAIModelOptionsCacheKeyHash(effectivePrimaryApiKey)
+          : current.openaiModelOptionsCacheKeyHash,
       openaiMultimodalApiKey: useSeparateMultimodal
         ? trimmedMultimodalApiKey || current.openaiMultimodalApiKey
         : undefined,

@@ -19,7 +19,11 @@ import { errorMessage } from '../utils/errors.js'
 import { truncateToWidth } from '../utils/format.js'
 import { logError } from '../utils/log.js'
 import { sleep } from '../utils/sleep.js'
-import { createAgentWorktree, removeAgentWorktree } from '../utils/worktree.js'
+import {
+  createAgentWorktree,
+  isAgentWorktreeUnavailableError,
+  removeAgentWorktree,
+} from '../utils/worktree.js'
 import {
   BridgeFatalError,
   createBridgeApiClient,
@@ -995,22 +999,31 @@ export async function runBridgeLoop(
                 `[bridge:session] Created worktree for sessionId=${sessionId} at ${wt.worktreePath}`,
               )
             } catch (err) {
-              const errMsg = errorMessage(err)
-              logger.logError(
-                `Failed to create worktree for session ${sessionId}: ${errMsg}`,
-              )
-              logError(new Error(`Worktree creation failed: ${errMsg}`))
-              completedWorkIds.add(work.id)
-              trackCleanup(
-                stopWorkWithRetry(
-                  api,
-                  environmentId,
-                  work.id,
-                  logger,
-                  backoffConfig.stopWorkBaseDelayMs,
-                ),
-              )
-              break
+              if (isAgentWorktreeUnavailableError(err)) {
+                logForDebugging(
+                  `[bridge:session] Worktree mode unavailable for sessionId=${sessionId}; falling back to shared directory: ${errorMessage(err)}`,
+                  { level: 'warn' },
+                )
+                worktreeCreateMs = Date.now() - wtStart
+                sessionDir = config.dir
+              } else {
+                const errMsg = errorMessage(err)
+                logger.logError(
+                  `Failed to create worktree for session ${sessionId}: ${errMsg}`,
+                )
+                logError(new Error(`Worktree creation failed: ${errMsg}`))
+                completedWorkIds.add(work.id)
+                trackCleanup(
+                  stopWorkWithRetry(
+                    api,
+                    environmentId,
+                    work.id,
+                    logger,
+                    backoffConfig.stopWorkBaseDelayMs,
+                  ),
+                )
+                break
+              }
             }
           }
 

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 import { getGlobalConfig } from './config.js'
 
 export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1'
@@ -56,6 +57,52 @@ export function getPrimaryOpenAIConfig(): EndpointConfig {
       ) ?? DEFAULT_OPENAI_MODEL,
     endpointMode: getOpenAIEndpointMode(),
   }
+}
+
+export function getOpenAIModelOptionsCacheKeyHash(
+  apiKey: string | null | undefined,
+): string {
+  return createHash('sha256').update(apiKey ?? '', 'utf8').digest('hex')
+}
+
+function normalizeBaseUrl(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) {
+    return null
+  }
+  try {
+    const url = new URL(raw)
+    url.pathname = url.pathname.replace(/\/+$/, '')
+    return url.toString().replace(/\/+$/, '')
+  } catch {
+    return raw.replace(/\/+$/, '')
+  }
+}
+
+export function isOpenAIModelOptionsCacheUsable(): boolean {
+  const config = getGlobalConfig()
+  const endpoint = getPrimaryOpenAIConfig()
+  const cachedModels = config.openaiModelOptionsCache ?? []
+  if (cachedModels.length === 0) {
+    return false
+  }
+
+  const cacheBaseUrl = normalizeBaseUrl(config.openaiModelOptionsCacheBaseUrl)
+  const endpointBaseUrl = normalizeBaseUrl(endpoint.baseUrl)
+  if (!cacheBaseUrl || cacheBaseUrl !== endpointBaseUrl) {
+    return false
+  }
+
+  return (
+    config.openaiModelOptionsCacheKeyHash ===
+    getOpenAIModelOptionsCacheKeyHash(endpoint.apiKey)
+  )
+}
+
+export function getValidOpenAIModelOptionsCache(): string[] {
+  return isOpenAIModelOptionsCacheUsable()
+    ? (getGlobalConfig().openaiModelOptionsCache ?? [])
+    : []
 }
 
 export function getMultimodalOpenAIConfig(): EndpointConfig {

@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { access, chmod, copyFile, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -37,7 +37,13 @@ type VersionInfo = {
 	patch: number
 }
 
-export type HelionReleaseUpdateStatus = 'disabled' | 'skipped' | 'current' | 'updated' | 'failed'
+export type HelionReleaseUpdateStatus =
+	| 'disabled'
+	| 'skipped'
+	| 'current'
+	| 'updated'
+	| 'restart_scheduled'
+	| 'failed'
 
 export type HelionReleaseUpdateResult = {
 	status: HelionReleaseUpdateStatus
@@ -57,6 +63,9 @@ type UpdateOptions = {
 	cwd: string
 	label?: string
 	currentVersion?: string
+	restartAfterUpdate?: boolean
+	restartArgs?: string[]
+	restartCwd?: string
 	respectDisableEnv?: boolean
 	quietIfCurrent?: boolean
 	logger?: HelionReleaseUpdateLogger
@@ -72,6 +81,9 @@ export async function maybeUpdateHelionReleaseBinary({
 	cwd,
 	label = 'HelionCoder',
 	currentVersion,
+	restartAfterUpdate = false,
+	restartArgs,
+	restartCwd,
 	respectDisableEnv = true,
 	quietIfCurrent = false,
 	logger = defaultLogger,
@@ -96,6 +108,9 @@ export async function maybeUpdateHelionReleaseBinary({
 			target,
 			label,
 			currentVersion,
+			restartAfterUpdate,
+			restartArgs,
+			restartCwd,
 			quietIfCurrent,
 			logger,
 		})
@@ -110,12 +125,18 @@ async function updateResolvedTarget({
 	target,
 	label,
 	currentVersion,
+	restartAfterUpdate,
+	restartArgs,
+	restartCwd,
 	quietIfCurrent,
 	logger,
 }: {
 	target: InstallTarget
 	label: string
 	currentVersion?: string
+	restartAfterUpdate: boolean
+	restartArgs?: string[]
+	restartCwd?: string
 	quietIfCurrent: boolean
 	logger: HelionReleaseUpdateLogger
 }): Promise<HelionReleaseUpdateResult> {
@@ -152,6 +173,9 @@ async function updateResolvedTarget({
 		release: releaseInfo.release,
 		releaseVersion: releaseInfo.releaseVersion,
 		asset: assetInfo.asset,
+		restartAfterUpdate,
+		restartArgs,
+		restartCwd,
 		logger,
 	})
 }
@@ -258,6 +282,9 @@ async function installAndVerifyRelease({
 	release,
 	releaseVersion,
 	asset,
+	restartAfterUpdate,
+	restartArgs,
+	restartCwd,
 	logger,
 }: {
 	target: InstallTarget
@@ -266,12 +293,58 @@ async function installAndVerifyRelease({
 	release: GitHubRelease
 	releaseVersion: VersionInfo
 	asset: GitHubReleaseAsset
+	restartAfterUpdate: boolean
+	restartArgs?: string[]
+	restartCwd?: string
 	logger: HelionReleaseUpdateLogger
 }): Promise<HelionReleaseUpdateResult> {
 	const from = localVersion?.raw ?? '未安装'
 	logger.info(
 		`${label} 版本检测：发现版本 ${from} -> ${releaseVersion.raw}，正在下载 ${asset.name}...`,
 	)
+
+	if (restartAfterUpdate) {
+		const tempPath = await downloadReleaseAssetToTemp(release, asset, target.path)
+		const relaunchAfterUpdate = shouldRelaunchAfterUpdate()
+		try {
+			if (process.platform === 'win32') {
+				await scheduleWindowsReplaceAndRestart({
+					targetPath: target.path,
+					tempPath,
+					expectedVersion: releaseVersion.raw,
+					restartArgs: restartArgs ?? defaultRestartArgs(),
+					restartCwd: restartCwd ?? process.cwd(),
+					relaunchAfterUpdate,
+					logger,
+				})
+			} else {
+				await schedulePosixReplaceAndRestart({
+					targetPath: target.path,
+					tempPath,
+					expectedVersion: releaseVersion.raw,
+					restartArgs: restartArgs ?? defaultRestartArgs(),
+					restartCwd: restartCwd ?? process.cwd(),
+					relaunchAfterUpdate,
+					logger,
+				})
+			}
+		} catch (error) {
+			await rm(tempPath, { force: true })
+			throw error
+		}
+		const message = relaunchAfterUpdate
+			? `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换并重启。`
+			: `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换。`
+		logger.info(message)
+		return {
+			status: 'restart_scheduled',
+			binaryPath: target.path,
+			previousVersion: localVersion?.raw,
+			latestVersion: releaseVersion.raw,
+			message,
+		}
+	}
+
 	await installReleaseAsset(release, asset, target.path)
 
 	const installedVersion = await readBinaryVersion(target.path)
@@ -283,18 +356,22 @@ async function installAndVerifyRelease({
 
 	const message = `${label} 版本检测：已更新 ${target.displayPath} 到 ${installedVersion.raw}。`
 	logger.info(message)
-	return {
+	const result: HelionReleaseUpdateResult = {
 		status: 'updated',
 		binaryPath: target.path,
 		previousVersion: localVersion?.raw,
 		latestVersion: installedVersion.raw,
 		message,
 	}
+
+	return result
 }
 
 export async function maybeUpdateCurrentCliFromRelease(options: {
 	cwd: string
 	currentVersion: string
+	restartArgs?: string[]
+	restartCwd?: string
 	logger?: HelionReleaseUpdateLogger
 }): Promise<HelionReleaseUpdateResult> {
 	const binaryPath = resolveCurrentCliBinaryPath()
@@ -313,6 +390,9 @@ export async function maybeUpdateCurrentCliFromRelease(options: {
 		cwd: options.cwd,
 		label: 'HelionCoder CLI',
 		currentVersion: options.currentVersion,
+		restartAfterUpdate: true,
+		restartArgs: options.restartArgs,
+		restartCwd: options.restartCwd,
 		respectDisableEnv: false,
 		logger: options.logger,
 	})
@@ -474,31 +554,11 @@ async function installReleaseAsset(
 	asset: GitHubReleaseAsset,
 	targetPath: string,
 ): Promise<void> {
-	const dir = path.dirname(targetPath)
-	await mkdir(dir, { recursive: true })
-
-	const tempPath = path.join(
-		dir,
-		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.download`,
-	)
+	const tempPath = await downloadReleaseAssetToTemp(release, asset, targetPath)
 	const backupPath = `${targetPath}.bak-${process.pid}-${Date.now()}`
 	let backupCreated = false
 
 	try {
-		const bytes = await downloadAsset(asset)
-		await writeFile(tempPath, bytes)
-		if (process.platform !== 'win32') {
-			await chmod(tempPath, 0o755)
-		}
-
-		const checksum = await findChecksum(release, asset)
-		if (checksum) {
-			const actual = createHash('sha256').update(bytes).digest('hex')
-			if (actual.toLowerCase() !== checksum.toLowerCase()) {
-				throw new Error(`SHA256 校验失败：期望 ${checksum}，实际 ${actual}`)
-			}
-		}
-
 		if (await fileExists(targetPath)) {
 			await copyFile(targetPath, backupPath)
 			backupCreated = true
@@ -519,6 +579,252 @@ async function installReleaseAsset(
 		}
 		throw error
 	}
+}
+
+async function downloadReleaseAssetToTemp(
+	release: GitHubRelease,
+	asset: GitHubReleaseAsset,
+	targetPath: string,
+): Promise<string> {
+	const dir = path.dirname(targetPath)
+	await mkdir(dir, { recursive: true })
+
+	const tempPath = path.join(
+		dir,
+		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.download`,
+	)
+
+	try {
+		const bytes = await downloadAsset(asset)
+		await writeFile(tempPath, bytes)
+		if (process.platform !== 'win32') {
+			await chmod(tempPath, 0o755)
+		}
+
+		const checksum = await findChecksum(release, asset)
+		if (checksum) {
+			const actual = createHash('sha256').update(bytes).digest('hex')
+			if (actual.toLowerCase() !== checksum.toLowerCase()) {
+				throw new Error(`SHA256 校验失败：期望 ${checksum}，实际 ${actual}`)
+			}
+		}
+
+		return tempPath
+	} catch (error) {
+		await rm(tempPath, { force: true })
+		throw error
+	}
+}
+
+async function scheduleWindowsReplaceAndRestart({
+	targetPath,
+	tempPath,
+	expectedVersion,
+	restartArgs,
+	restartCwd,
+	relaunchAfterUpdate,
+	logger,
+}: {
+	targetPath: string
+	tempPath: string
+	expectedVersion: string
+	restartArgs: string[]
+	restartCwd: string
+	relaunchAfterUpdate: boolean
+	logger: HelionReleaseUpdateLogger
+}): Promise<void> {
+	const stdio = helperStdio()
+	const scriptPath = path.join(
+		path.dirname(targetPath),
+		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.update.cmd`,
+	)
+	const backupPath = `${targetPath}.bak-${process.pid}-${Date.now()}`
+	const script = [
+		'@echo off',
+		'setlocal DisableDelayedExpansion',
+		`set "TARGET=${targetPath}"`,
+		`set "TEMP=${tempPath}"`,
+		`set "BACKUP=${backupPath}"`,
+		`set "PID=${process.pid}"`,
+		`set "EXPECTED=${expectedVersion}"`,
+		`set "RELAUNCH=${relaunchAfterUpdate ? '1' : '0'}"`,
+		`cd /d ${quoteBatchArg(restartCwd)}`,
+		'echo HelionCoder CLI update: waiting for the current process to exit...',
+		'set /A WAITED=0',
+		':wait_for_exit',
+		'tasklist /FI "PID eq %PID%" 2>NUL | findstr /C:"%PID%" >NUL',
+		'if not errorlevel 1 (',
+		'  if %WAITED% GEQ 5 taskkill /PID %PID% /F >NUL 2>NUL',
+		'  set /A WAITED+=1',
+		'  timeout /T 1 /NOBREAK >NUL',
+		'  goto wait_for_exit',
+		')',
+		'set /A ATTEMPT=0',
+		':replace',
+		'if exist "%BACKUP%" del /F /Q "%BACKUP%" >NUL 2>NUL',
+		'if exist "%TARGET%" (',
+		'  move /Y "%TARGET%" "%BACKUP%" >NUL 2>NUL',
+		'  if errorlevel 1 goto retry',
+		')',
+		'move /Y "%TEMP%" "%TARGET%" >NUL 2>NUL',
+		'if errorlevel 1 (',
+		'  if exist "%BACKUP%" move /Y "%BACKUP%" "%TARGET%" >NUL 2>NUL',
+		'  goto retry',
+		')',
+		'if exist "%BACKUP%" del /F /Q "%BACKUP%" >NUL 2>NUL',
+		'echo HelionCoder CLI updated to %EXPECTED%.',
+		'if "%RELAUNCH%"=="1" (',
+		'  echo Restarting HelionCoder CLI...',
+		`  "${targetPath}" ${restartArgs.map(quoteBatchArg).join(' ')}`,
+		'  set "EXITCODE=%ERRORLEVEL%"',
+		') else (',
+		'  set "EXITCODE=0"',
+		')',
+		'del /F /Q "%~f0" >NUL 2>NUL',
+		'exit /B %EXITCODE%',
+		':retry',
+		'set /A ATTEMPT+=1',
+		'if %ATTEMPT% LSS 10 (',
+		'  timeout /T 1 /NOBREAK >NUL',
+		'  goto replace',
+		')',
+		'echo HelionCoder CLI update failed: could not replace %TARGET%.',
+		'exit /B 1',
+		'',
+	].join('\r\n')
+
+	await writeFile(scriptPath, script)
+	spawn('cmd.exe', ['/d', '/s', '/c', scriptPath], {
+		cwd: restartCwd,
+		detached: stdio === 'ignore',
+		stdio,
+		windowsHide: stdio === 'ignore',
+	}).unref()
+	logger.info('HelionCoder CLI 版本检测：已启动 Windows 更新 helper。')
+}
+
+async function schedulePosixReplaceAndRestart({
+	targetPath,
+	tempPath,
+	expectedVersion,
+	restartArgs,
+	restartCwd,
+	relaunchAfterUpdate,
+	logger,
+}: {
+	targetPath: string
+	tempPath: string
+	expectedVersion: string
+	restartArgs: string[]
+	restartCwd: string
+	relaunchAfterUpdate: boolean
+	logger: HelionReleaseUpdateLogger
+}): Promise<void> {
+	const stdio = helperStdio()
+	const scriptPath = path.join(
+		path.dirname(targetPath),
+		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.update.sh`,
+	)
+	const backupPath = `${targetPath}.bak-${process.pid}-${Date.now()}`
+	const script = [
+		'#!/bin/sh',
+		'set -u',
+		`TARGET=${quoteShellArg(targetPath)}`,
+		`TEMP=${quoteShellArg(tempPath)}`,
+		`BACKUP=${quoteShellArg(backupPath)}`,
+		`PID=${process.pid}`,
+		`EXPECTED=${quoteShellArg(expectedVersion)}`,
+		`RELAUNCH=${relaunchAfterUpdate ? '1' : '0'}`,
+		`cd ${quoteShellArg(restartCwd)}`,
+		'echo "HelionCoder CLI update: waiting for the current process to exit..."',
+		'WAITED=0',
+		'while kill -0 "$PID" 2>/dev/null; do',
+		'  if [ "$WAITED" -ge 5 ]; then',
+		'    kill "$PID" 2>/dev/null || true',
+		'  fi',
+		'  if [ "$WAITED" -ge 8 ]; then',
+		'    kill -9 "$PID" 2>/dev/null || true',
+		'  fi',
+		'  WAITED=$((WAITED + 1))',
+		'  sleep 1',
+		'done',
+		'ATTEMPT=0',
+		'while :; do',
+		'  rm -f "$BACKUP"',
+		'  if [ -f "$TARGET" ]; then',
+		'    mv -f "$TARGET" "$BACKUP" 2>/dev/null || true',
+		'  fi',
+		'  if mv -f "$TEMP" "$TARGET" 2>/dev/null; then',
+		'    chmod 755 "$TARGET" 2>/dev/null || true',
+		'    if command -v xattr >/dev/null 2>&1; then',
+		'      xattr -dr com.apple.quarantine "$TARGET" >/dev/null 2>&1 || true',
+		'    fi',
+		'    INSTALLED_VERSION="$("$TARGET" --version 2>&1 || true)"',
+		'    case "$INSTALLED_VERSION" in',
+		'      *"$EXPECTED"*) rm -f "$BACKUP"; break ;;',
+		'    esac',
+		'    echo "HelionCoder CLI update failed: expected $EXPECTED, got ${INSTALLED_VERSION:-unknown}." >&2',
+		'    rm -f "$TARGET"',
+		'    if [ -f "$BACKUP" ]; then mv -f "$BACKUP" "$TARGET"; fi',
+		'    exit 1',
+		'  else',
+		'    if [ -f "$BACKUP" ] && [ ! -f "$TARGET" ]; then mv -f "$BACKUP" "$TARGET"; fi',
+		'  fi',
+		'  ATTEMPT=$((ATTEMPT + 1))',
+		'  if [ "$ATTEMPT" -ge 10 ]; then',
+		'    echo "HelionCoder CLI update failed: could not replace $TARGET." >&2',
+		'    exit 1',
+		'  fi',
+		'  sleep 1',
+		'done',
+		'echo "HelionCoder CLI updated to $EXPECTED."',
+		'if [ "$RELAUNCH" = "1" ]; then',
+		'  echo "Restarting HelionCoder CLI..."',
+		'  ( sleep 3; rm -f "$0" ) >/dev/null 2>&1 &',
+		`  exec "$TARGET" ${restartArgs.map(quoteShellArg).join(' ')}`,
+		'fi',
+		'rm -f "$0"',
+		'exit 0',
+		'',
+	].join('\n')
+
+	await writeFile(scriptPath, script)
+	await chmod(scriptPath, 0o755)
+	spawn('/bin/sh', [scriptPath], {
+		cwd: restartCwd,
+		detached: stdio === 'ignore',
+		stdio,
+	}).unref()
+	logger.info('HelionCoder CLI 版本检测：已启动更新 helper。')
+}
+
+function defaultRestartArgs(): string[] {
+	const args = process.argv.slice(1)
+	const updateIndex = args.findIndex((arg) => arg === 'update' || arg === 'upgrade')
+	return updateIndex >= 0 ? args.slice(0, updateIndex) : args
+}
+
+function shouldRelaunchAfterUpdate(): boolean {
+	return process.env.HELION_CLI_UPDATE_RELAUNCH !== '0'
+}
+
+function helperStdio(): 'inherit' | 'ignore' {
+	if (process.env.HELION_CLI_UPDATE_DETACHED === '1' || !process.stdout.isTTY) {
+		return 'ignore'
+	}
+	return 'inherit'
+}
+
+function quoteBatchArg(value: string): string {
+	return `"${value
+		.replace(/%/g, '%%')
+		.replace(/\^/g, '^^')
+		.replace(/"/g, '\\"')
+		.replace(/\r?\n/g, ' ')}"`
+}
+
+function quoteShellArg(value: string): string {
+	return `'${value.replace(/'/g, "'\\''")}'`
 }
 
 async function clearMacOSQuarantine(targetPath: string): Promise<void> {

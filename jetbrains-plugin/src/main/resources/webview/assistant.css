@@ -567,6 +567,23 @@ h1 {
   line-height: 1.65;
 }
 
+.plan-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.plan-actions button {
+  min-height: 28px;
+  border-color: var(--vscode-button-background, var(--accent));
+  background: var(--vscode-button-background, var(--accent));
+  color: var(--vscode-button-foreground, var(--accent-text));
+}
+
+.plan-actions button:disabled {
+  opacity: 0.7;
+}
+
 .review-panel {
   padding: 0;
 }
@@ -3963,28 +3980,50 @@ h1 {
 }
 
 .recent-task {
-  display: grid;
+  display: flex;
   width: 100%;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  min-height: 34px;
+  gap: 7px;
+  min-height: 30px;
   align-items: center;
   border: 0;
-  border-radius: 6px;
-  padding: 5px 4px;
+  border-radius: 7px;
+  padding: 4px 6px;
   text-align: left;
 }
 
-.recent-task span {
+.recent-task-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.recent-task-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.8;
+}
+
+.recent-task-title {
+  min-width: 0;
+  flex: 1;
   overflow: hidden;
   color: var(--text);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.recent-task small,
+.recent-task small {
+  display: none;
+}
+
 .recent-all,
 .recent-empty {
   color: var(--muted);

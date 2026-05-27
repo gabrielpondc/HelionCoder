@@ -80,6 +80,10 @@ import { gracefulShutdownSync, isShuttingDown } from './gracefulShutdown.js'
 import { parseJSONL } from './json.js'
 import { logError } from './log.js'
 import { extractTag, isCompactBoundaryMessage } from './messages.js'
+import {
+  syncOpenCovibeMessages,
+  syncOpenCovibeTitle,
+} from './openCovibeHistory.js'
 import { sanitizePath } from './path.js'
 import {
   extractJsonStringField,
@@ -1437,6 +1441,12 @@ export async function recordTranscript(
       startingParentUuid,
       teamInfo,
     )
+    await syncOpenCovibeMessages({
+      sessionId,
+      cwd: getOriginalCwd(),
+      transcriptPath: getTranscriptPath(),
+      messages: newMessages,
+    })
   }
   // Return the last ACTUALLY recorded chain-participant's UUID, OR the
   // prefix-tracked UUID if no new chain participants were recorded. This lets
@@ -2631,6 +2641,12 @@ export async function saveCustomTitle(
   if (sessionId === getSessionId()) {
     getProject().currentSessionTitle = customTitle
   }
+  void syncOpenCovibeTitle({
+    sessionId,
+    cwd: getOriginalCwd(),
+    transcriptPath: resolvedPath,
+    title: customTitle,
+  })
   logEvent('tengu_session_renamed', {
     source:
       source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -2665,10 +2681,17 @@ export async function saveCustomTitle(
  * where the AI title lands after a mid-flight user rename.
  */
 export function saveAiGeneratedTitle(sessionId: UUID, aiTitle: string): void {
-  appendEntryToFile(getTranscriptPathForSession(sessionId), {
+  const resolvedPath = getTranscriptPathForSession(sessionId)
+  appendEntryToFile(resolvedPath, {
     type: 'ai-title',
     aiTitle,
     sessionId,
+  })
+  void syncOpenCovibeTitle({
+    sessionId,
+    cwd: getOriginalCwd(),
+    transcriptPath: resolvedPath,
+    title: aiTitle,
   })
 }
 
@@ -2829,6 +2852,12 @@ export async function saveAgentName(
     getProject().currentSessionAgentName = agentName
     void updateSessionName(agentName)
   }
+  void syncOpenCovibeTitle({
+    sessionId,
+    cwd: getOriginalCwd(),
+    transcriptPath: resolvedPath,
+    title: agentName,
+  })
   logEvent('tengu_agent_name_set', {
     source:
       source as AnalyticsMetadata_I_VERIFIED_THIS_IS_NOT_CODE_OR_FILEPATHS,
@@ -5103,4 +5132,3 @@ export async function enrichLogs(
 
   return { logs: result, nextIndex: i }
 }
-

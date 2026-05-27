@@ -1,5 +1,6 @@
 import type { ChildProcess, ExecFileException } from 'child_process'
 import { execFile, spawn } from 'child_process'
+import { existsSync } from 'fs'
 import memoize from 'lodash-es/memoize.js'
 import { homedir } from 'os'
 import * as path from 'path'
@@ -26,6 +27,24 @@ type RipgrepConfig = {
   command: string
   args: string[]
   argv0?: string
+}
+
+type BunRuntime = {
+  spawn?: (
+    command: string[],
+    options: {
+      argv0?: string
+      stderr: 'ignore'
+      stdout: 'pipe'
+    },
+  ) => {
+    stdout: unknown
+    exited: Promise<number>
+  }
+}
+
+function getBunRuntime(): BunRuntime | undefined {
+  return (globalThis as typeof globalThis & { Bun?: BunRuntime }).Bun
 }
 
 const getRipgrepConfig = memoize((): RipgrepConfig => {
@@ -60,6 +79,15 @@ const getRipgrepConfig = memoize((): RipgrepConfig => {
     process.platform === 'win32'
       ? path.resolve(rgRoot, `${process.arch}-win32`, 'rg.exe')
       : path.resolve(rgRoot, `${process.arch}-${process.platform}`, 'rg')
+
+  if (existsSync(command)) {
+    return { mode: 'builtin', command, args: [] }
+  }
+
+  const { cmd: systemPath } = findExecutable('rg', [])
+  if (systemPath !== 'rg') {
+    return { mode: 'system', command: 'rg', args: [] }
+  }
 
   return { mode: 'builtin', command, args: [] }
 })
@@ -511,7 +539,13 @@ export const countFilesRoundedRg = memoize(
       return Math.round(count / power) * power
     } catch (error) {
       // AbortSignal.timeout firing is expected on large/slow repos, not an error.
-      if ((error as Error)?.name !== 'AbortError') logError(error)
+      if ((error as Error)?.name !== 'AbortError') {
+        logForDebugging(
+          `[ripgrep:file_count] skipped file count: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+      }
     }
   },
   // lodash memoize's default resolver only uses the first argument.
@@ -560,10 +594,10 @@ const testRipgrepOnFirstUse = memoize(async (): Promise<void> => {
     let test: { code: number; stdout: string }
 
     // For embedded ripgrep, use Bun.spawn with argv0
-    if (config.argv0) {
+    const bun = getBunRuntime()
+    if (config.argv0 && bun?.spawn) {
       // Only Bun embeds ripgrep.
-      // eslint-disable-next-line custom-rules/require-bun-typeof-guard
-      const proc = Bun.spawn([config.command, '--version'], {
+      const proc = bun.spawn([config.command, '--version'], {
         argv0: config.argv0,
         stderr: 'ignore',
         stdout: 'pipe',
@@ -677,4 +711,3 @@ async function codesignRipgrepIfNecessary() {
     logError(e)
   }
 }
-

@@ -32,6 +32,7 @@ import {
 } from './model.js'
 import { has1mContext } from '../context.js'
 import { getGlobalConfig } from '../config.js'
+import { getValidOpenAIModelOptionsCache } from '../openaiConfig.js'
 
 // @[MODEL LAUNCH]: Update all the available and default model option strings below.
 
@@ -267,7 +268,7 @@ function getOpusPlanOption(): ModelOption {
 }
 
 function getOpenAICompatibleModelOptions(): ModelOption[] | null {
-  const cachedModels = getGlobalConfig().openaiModelOptionsCache ?? []
+  const cachedModels = getValidOpenAIModelOptionsCache()
   if (cachedModels.length === 0) {
     return null
   }

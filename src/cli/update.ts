@@ -46,7 +46,11 @@ export async function update() {
       warn: message => process.stderr.write(`${message}\n`),
     },
   })
-  if (releaseUpdate.status === 'updated' || releaseUpdate.status === 'current') {
+  if (
+    releaseUpdate.status === 'updated' ||
+    releaseUpdate.status === 'restart_scheduled' ||
+    releaseUpdate.status === 'current'
+  ) {
     await gracefulShutdown(0)
   }
   if (releaseUpdate.status === 'failed') {

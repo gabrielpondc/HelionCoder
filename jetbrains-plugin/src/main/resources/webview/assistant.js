@@ -1517,11 +1517,7 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "recent-task";
-        const title = document.createElement("span");
-        title.textContent = item.title || "未命名任务";
-        const meta = document.createElement("small");
-        meta.textContent = `${formatRelativeTime(item.timestamp)} · ${item.messageCount || 0} 条消息`;
-        button.append(title, meta);
+        renderRecentTaskContent(button, item);
         button.addEventListener("click", () => {
           if (item.id) {
             vscode.postMessage({ type: "openRecentHistory", id: item.id });
@@ -1568,7 +1564,20 @@
       li.textContent = item;
       list.append(li);
     });
-    card.append(header, list);
+    const actions = document.createElement("div");
+    actions.className = "plan-actions";
+    const execute = document.createElement("button");
+    execute.type = "button";
+    execute.className = "plan-execute";
+    execute.textContent = "执行计划";
+    execute.title = "批准并执行这个计划";
+    execute.addEventListener("click", () => {
+      execute.disabled = true;
+      execute.textContent = "执行中";
+      vscode.postMessage({ type: "executePlan", plan });
+    });
+    actions.append(execute);
+    card.append(header, list, actions);
     bubble.append(card);
   }
 
@@ -2771,6 +2780,32 @@
     return `${Math.round(diff / day)} 天`;
   }
 
+  function renderRecentTaskContent(button, item) {
+    const titleText = item.title || "未命名任务";
+    const metaParts = [];
+    const relative = formatRelativeTime(item.timestamp);
+    if (relative) {
+      metaParts.push(relative);
+    }
+    if (item.messageCount) {
+      metaParts.push(`${item.messageCount} 条消息`);
+    }
+    button.title = metaParts.length
+      ? `${titleText} · ${metaParts.join(" · ")}`
+      : titleText;
+
+    const icon = document.createElement("span");
+    icon.className = "recent-task-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>';
+
+    const title = document.createElement("span");
+    title.className = "recent-task-title";
+    title.textContent = titleText;
+    button.append(icon, title);
+  }
+
   function clearLandingMessage() {
     const empty = timeline.querySelector(".empty-state");
     if (empty) {
@@ -2810,11 +2845,7 @@
         button.type = "button";
         button.className = "recent-task";
         button.dataset.historyId = item.id || "";
-        const title = document.createElement("span");
-        title.textContent = item.title || "未命名任务";
-        const time = document.createElement("small");
-        time.textContent = formatRelativeTime(item.timestamp);
-        button.append(title, time);
+        renderRecentTaskContent(button, item);
         button.addEventListener("click", () => {
           if (item.id) {
             vscode.postMessage({ type: "openRecentHistory", id: item.id });

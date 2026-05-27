@@ -4,6 +4,7 @@ import type { BetaMessageParam as MessageParam } from '@anthropic-ai/sdk/resourc
 // to defer ~279KB of AWS SDK code until a Bedrock call is actually made
 import type { CountTokensCommandInput } from '@aws-sdk/client-bedrock-runtime'
 import { getAPIProvider } from 'src/utils/model/providers.js'
+import { hasExplicitOpenAICompatibleConfig } from 'src/utils/openaiConfig.js'
 import { VERTEX_COUNT_TOKENS_ALLOWED_BETAS } from '../constants/betas.js'
 import type { Attachment } from '../utils/attachments.js'
 import { getModelBetas } from '../utils/betas.js'
@@ -143,6 +144,10 @@ export async function countMessagesTokensWithAPI(
 ): Promise<number | null> {
   return withTokenCountVCR(messages, tools, async () => {
     try {
+      if (hasExplicitOpenAICompatibleConfig()) {
+        return roughTokenCountEstimation(jsonStringify({ messages, tools }))
+      }
+
       const model = getMainLoopModel()
       const betas = getModelBetas(model)
       const containsThinking = hasThinkingBlocks(messages)
@@ -493,4 +498,3 @@ async function countTokensWithBedrock({
     return null
   }
 }
-

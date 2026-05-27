@@ -1,6 +1,7 @@
 package com.helioncoder.jetbrains;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -47,6 +48,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
@@ -172,6 +174,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                     HelionSettings.setPermissionMode(enabled ? "plan" : "default");
                     postContext();
                 }
+                case "executePlan" -> executePlan(rawMessage);
                 case "configureExecutable" -> configureExecutable();
                 case "insertText" -> insertText(coalesce(extract(TEXT_PATTERN, rawMessage), ""));
                 case "openStepFile" -> openFileAt(
@@ -205,6 +208,28 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             }
         }
 
+        private void executePlan(@NotNull String rawMessage) {
+            List<String> plan = jsonStringArray(rawMessage, "plan");
+            if (plan.isEmpty()) {
+                return;
+            }
+
+            HelionSettings.setPermissionMode("default");
+            postContext();
+            StringBuilder approvedPlan = new StringBuilder();
+            for (int i = 0; i < plan.size(); i += 1) {
+                approvedPlan.append(i + 1).append(". ").append(plan.get(i)).append('\n');
+            }
+            String prompt = String.join("\n",
+                "用户已经批准下面的计划。现在请在当前工作区执行它。",
+                "实际修改需要变更的文件，并运行合适的验证。不要只复述计划。",
+                "",
+                "Approved plan:",
+                approvedPlan.toString().trim()
+            );
+            runAssistantPrompt(prompt, "ask", "执行已批准计划", prompt, "[]");
+        }
+
         private void runAssistantPrompt(
             @NotNull String prompt,
             @NotNull String mode,
@@ -217,6 +242,8 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 return;
             }
 
+            boolean planMode = "plan".equals(HelionSettings.permissionMode());
+            String effectiveMode = planMode ? "plan" : mode;
             String requestId = UUID.randomUUID().toString();
             currentRequestId = requestId;
             String visiblePrompt = displayPrompt.isBlank() ? trimmed : displayPrompt.trim();
@@ -227,7 +254,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 + ",\"prompt\":" + json(visiblePrompt)
                 + ",\"editPrompt\":" + json(editablePrompt)
                 + ",\"attachments\":" + attachments
-                + ",\"mode\":" + json(mode) + "}");
+                + ",\"mode\":" + json(effectiveMode) + "}");
 
             currentTask = ApplicationManager.getApplication().executeOnPooledThread(() -> {
                 try {
@@ -236,7 +263,14 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                         ? FileEditorManager.getInstance(project).getSelectedTextEditor()
                         : null;
                     String promptWithImages = withImageAttachmentRefs(trimmed, attachments);
-                    String finalPrompt = EditorContext.buildPrompt(project, editor, promptWithImages, "助手面板提问");
+                    String promptForMode = planMode
+                        ? String.join("\n\n",
+                            "Plan mode is enabled. Do not modify files or run write operations.",
+                            "Return a concrete numbered implementation plan and list files you would inspect or change.",
+                            promptWithImages
+                        )
+                        : promptWithImages;
+                    String finalPrompt = EditorContext.buildPrompt(project, editor, promptForMode, planMode ? "计划模式" : "助手面板提问");
                     HelionCli.StreamResult result = cli.runPromptStream(project, finalPrompt, currentSessionId, new HelionCli.StreamCallbacks() {
                         @Override
                         public void onController(@NotNull HelionCli.StreamController controller) {
@@ -298,8 +332,11 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                         }
                     });
                     currentSessionId = result.sessionId() == null ? currentSessionId : result.sessionId();
+                    if (currentSessionId != null) {
+                        adoptActiveConversationId(currentSessionId);
+                    }
                     String text = result.stdout().trim();
-                    List<ReviewChange> review = createReview(beforeSnapshot);
+                    List<ReviewChange> review = planMode ? List.of() : createReview(beforeSnapshot);
                     appendOutput(result.commandLine());
                     if (!text.isBlank()) {
                         appendOutput(text);
@@ -311,6 +348,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                     ApplicationManager.getApplication().invokeLater(() -> {
                         postToWebview("{\"type\":\"run-done\",\"requestId\":" + json(requestId)
                             + ",\"text\":" + json(text)
+                            + planJson(planMode ? parsePlan(text) : List.of())
                             + reviewJson(review)
                             + "}");
                         postContext();
@@ -364,6 +402,23 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             record.touch(System.currentTimeMillis());
         }
 
+        private void adoptActiveConversationId(@NotNull String sessionId) {
+            if (sessionId.equals(activeConversationId)) {
+                return;
+            }
+            ConversationRecord existing = conversations.remove(activeConversationId);
+            if (existing == null) {
+                activeConversationId = sessionId;
+                return;
+            }
+            ConversationRecord target = conversations.computeIfAbsent(sessionId, id ->
+                new ConversationRecord(id, existing.title(), existing.createdAt(), new ArrayList<>())
+            );
+            target.messages().addAll(existing.messages());
+            target.touch(Math.max(target.updatedAt(), existing.updatedAt()));
+            activeConversationId = sessionId;
+        }
+
         private void showHistory() {
             postToWebview("{\"type\":\"history-loaded\",\"title\":\"历史对话\",\"historyItems\":"
                 + historyItemsJson(Integer.MAX_VALUE)
@@ -371,7 +426,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
         }
 
         private void openHistory(@NotNull String id) {
-            ConversationRecord record = conversations.get(id);
+            ConversationRecord record = findConversationRecord(id);
             if (record == null) {
                 postNotice("找不到这条历史对话。");
                 return;
@@ -794,7 +849,10 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
 
                 String model = HelionSettings.model().isBlank() ? "default" : HelionSettings.model();
                 String effort = HelionSettings.effort().isBlank() ? "auto" : HelionSettings.effort();
-                String models = modelsJson(modelResolver.listModels(false));
+                List<HelionModelResolver.ModelCandidate> modelList = modelResolver.listModels(false);
+                String models = modelsJson(modelList);
+                int contextTotal = resolveContextWindowTotal(modelList, model, modelResolver.defaultModelId());
+                int contextUsed = Math.max(0, (int) Math.ceil(selectedChars / 4.0));
                 return "{"
                     + "\"type\":\"context\","
                     + "\"cli\":\"本地 CLI\","
@@ -808,6 +866,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                     + "\"thinkingMode\":" + json(HelionSettings.thinking()) + ","
                     + "\"includeContext\":" + (HelionSettings.includeEditorContext() ? "true" : "false") + ","
                     + "\"planMode\":" + ("plan".equals(HelionSettings.permissionMode()) ? "true" : "false") + ","
+                    + "\"contextWindow\":" + contextWindowJson(contextUsed, contextTotal) + ","
                     + "\"recentHistory\":" + historyItemsJson(3) + ","
                     + "\"recentHistoryTotal\":" + conversations.size()
                     + "}";
@@ -869,15 +928,32 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 if (model.description() != null) {
                     output.append(",\"description\":").append(json(model.description()));
                 }
+                if (model.contextWindow() != null) {
+                    output.append(",\"contextWindow\":").append(model.contextWindow());
+                }
                 output.append('}');
-
-
-
-
-
             }
             return output.append(']').toString();
-       
+        }
+
+        private static @NotNull String contextWindowJson(int used, int total) {
+            int safeTotal = Math.max(1, total);
+            int percent = Math.min(99, Math.round((used * 100f) / safeTotal));
+            return "{\"used\":" + used + ",\"total\":" + safeTotal + ",\"percent\":" + percent + "}";
+        }
+
+        private static int resolveContextWindowTotal(
+            @NotNull List<HelionModelResolver.ModelCandidate> models,
+            @NotNull String selectedModel,
+            @NotNull String defaultModel
+        ) {
+            String target = "default".equals(selectedModel) ? defaultModel : selectedModel;
+            for (HelionModelResolver.ModelCandidate model : models) {
+                if (model.id().equalsIgnoreCase(target) && model.contextWindow() != null && model.contextWindow() > 0) {
+                    return model.contextWindow();
+                }
+            }
+            return target.matches("(?i).*\\[1m\\]\\s*$") ? 1_000_000 : 258_000;
         }
 
         private void postNotice(@NotNull String message) {
@@ -1317,6 +1393,28 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             return ",\"review\":{\"id\":" + json(id) + ",\"files\":" + files + ",\"fileCount\":" + changes.size() + "}";
         }
 
+        private static @NotNull String planJson(@NotNull List<String> plan) {
+            return plan.isEmpty() ? "" : ",\"plan\":" + GSON.toJson(plan);
+        }
+
+        private static @NotNull List<String> parsePlan(@NotNull String text) {
+            List<String> plan = new ArrayList<>();
+            for (String rawLine : text.split("\\R")) {
+                String line = rawLine.trim();
+                if (!line.matches("(?i)^(\\d+[.)]|[-*]\\s|\\[[ x-]\\])\\s*.*")) {
+                    continue;
+                }
+                String item = line.replaceFirst("(?i)^(\\d+[.)]|[-*]\\s|\\[[ x-]\\])\\s*", "").trim();
+                if (!item.isEmpty()) {
+                    plan.add(item);
+                }
+                if (plan.size() >= 8) {
+                    break;
+                }
+            }
+            return plan;
+        }
+
         private static @NotNull String kindLabel(@NotNull String kind) {
             return switch (kind) {
                 case "created" -> "新增";
@@ -1326,7 +1424,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
         }
 
         private @NotNull String historyItemsJson(int limit) {
-            List<ConversationRecord> records = new ArrayList<>(conversations.values());
+            List<ConversationRecord> records = mergedConversationRecords();
             records.sort((left, right) -> Long.compare(right.updatedAt(), left.updatedAt()));
             StringBuilder output = new StringBuilder("[");
             int count = 0;
@@ -1351,6 +1449,182 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             return output.append(']').toString();
         }
 
+        private @NotNull List<ConversationRecord> mergedConversationRecords() {
+            Map<String, ConversationRecord> merged = new LinkedHashMap<>();
+            for (ConversationRecord record : readOpenCovibeRunHistory()) {
+                merged.put(record.id(), record);
+            }
+            for (ConversationRecord record : conversations.values()) {
+                merged.putIfAbsent(record.id(), record);
+            }
+            return new ArrayList<>(merged.values());
+        }
+
+        private @Nullable ConversationRecord findConversationRecord(@NotNull String id) {
+            ConversationRecord memoryRecord = conversations.get(id);
+            if (memoryRecord != null) {
+                return memoryRecord;
+            }
+            for (ConversationRecord record : readOpenCovibeRunHistory()) {
+                if (record.id().equals(id)) {
+                    return record;
+                }
+            }
+            return null;
+        }
+
+        private @NotNull List<ConversationRecord> readOpenCovibeRunHistory() {
+            Path runsDir = helionHomeDir().resolve("runs");
+            if (!Files.isDirectory(runsDir)) {
+                return List.of();
+            }
+            List<ConversationRecord> records = new ArrayList<>();
+            try (var stream = Files.list(runsDir)) {
+                for (Path runDir : stream.filter(Files::isDirectory).toList()) {
+                    ConversationRecord record = readOpenCovibeRun(runDir);
+                    if (record != null) {
+                        records.add(record);
+                    }
+                }
+            } catch (IOException ignored) {
+                return records;
+            }
+            return records;
+        }
+
+        private @Nullable ConversationRecord readOpenCovibeRun(@NotNull Path runDir) {
+            Path metaPath = runDir.resolve("meta.json");
+            Path eventsPath = runDir.resolve("events.jsonl");
+            if (!Files.isRegularFile(metaPath)) {
+                return null;
+            }
+            try {
+                JsonObject meta = JsonParser.parseString(Files.readString(metaPath, StandardCharsets.UTF_8)).getAsJsonObject();
+                if (bool(meta, "hidden") || meta.has("deleted_at")) {
+                    return null;
+                }
+                String cwd = string(meta, "cwd");
+                if (!isRelatedProject(cwd)) {
+                    return null;
+                }
+                List<ConversationMessage> messages = readOpenCovibeMessages(eventsPath);
+                String title = firstNonBlank(string(meta, "name"), string(meta, "prompt"), firstUserMessage(messages));
+                if (title.isBlank() || isMetaHistoryText(title)) {
+                    return null;
+                }
+                long timestamp = firstPositive(
+                    millis(string(meta, "ended_at")),
+                    lastMessageTimestamp(messages),
+                    millis(string(meta, "started_at")),
+                    System.currentTimeMillis()
+                );
+                String id = firstNonBlank(string(meta, "session_id"), string(meta, "id"), runDir.getFileName().toString());
+                return new ConversationRecord(id, truncate(title, 220), timestamp, messages);
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+
+        private @NotNull List<ConversationMessage> readOpenCovibeMessages(@NotNull Path eventsPath) {
+            if (!Files.isRegularFile(eventsPath)) {
+                return List.of();
+            }
+            List<ConversationMessage> messages = new ArrayList<>();
+            try {
+                for (String line : Files.readAllLines(eventsPath, StandardCharsets.UTF_8)) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    JsonObject envelope = JsonParser.parseString(line).getAsJsonObject();
+                    JsonObject event = envelope.has("event") && envelope.get("event").isJsonObject()
+                        ? envelope.getAsJsonObject("event")
+                        : envelope;
+                    String type = string(event, "type");
+                    if (!"user_message".equals(type) && !"message_complete".equals(type)) {
+                        continue;
+                    }
+                    String text = string(event, "text");
+                    if (text.isBlank() || isMetaHistoryText(text)) {
+                        continue;
+                    }
+                    String role = "user_message".equals(type) ? "user" : "assistant";
+                    long timestamp = firstPositive(millis(string(envelope, "ts")), System.currentTimeMillis());
+                    messages.add(new ConversationMessage(role, text, timestamp));
+                }
+            } catch (Exception ignored) {
+                return messages;
+            }
+            return messages;
+        }
+
+        private @NotNull Path helionHomeDir() {
+            String configured = firstNonBlank(
+                System.getenv("HELIONCODER_CONFIG_DIR"),
+                System.getenv("KTCODER_CONFIG_DIR"),
+                System.getenv("CLAUDE_CONFIG_DIR")
+            );
+            if (!configured.isBlank()) {
+                return Paths.get(configured);
+            }
+            return Paths.get(System.getProperty("user.home"), ".helioncoder");
+        }
+
+        private boolean isRelatedProject(@NotNull String cwd) {
+            if (cwd.isBlank()) {
+                return true;
+            }
+            String basePath = project.getBasePath();
+            if (basePath == null || basePath.isBlank()) {
+                return true;
+            }
+            try {
+                Path recordPath = Paths.get(cwd).toAbsolutePath().normalize();
+                Path projectPath = Paths.get(basePath).toAbsolutePath().normalize();
+                return recordPath.equals(projectPath)
+                    || recordPath.startsWith(projectPath)
+                    || projectPath.startsWith(recordPath);
+            } catch (Exception ignored) {
+                return true;
+            }
+        }
+
+        private static @NotNull String firstUserMessage(@NotNull List<ConversationMessage> messages) {
+            for (ConversationMessage message : messages) {
+                if ("user".equals(message.role()) && !message.text().isBlank()) {
+                    return message.text();
+                }
+            }
+            return "";
+        }
+
+        private static long lastMessageTimestamp(@NotNull List<ConversationMessage> messages) {
+            long timestamp = 0;
+            for (ConversationMessage message : messages) {
+                timestamp = Math.max(timestamp, message.timestamp());
+            }
+            return timestamp;
+        }
+
+        private static long millis(@NotNull String value) {
+            if (value.isBlank()) {
+                return 0;
+            }
+            try {
+                return Instant.parse(value).toEpochMilli();
+            } catch (Exception ignored) {
+                return 0;
+            }
+        }
+
+        private static long firstPositive(long... values) {
+            for (long value : values) {
+                if (value > 0) {
+                    return value;
+                }
+            }
+            return 0;
+        }
+
         private static @NotNull String historyMessagesJson(@NotNull List<ConversationMessage> messages) {
             StringBuilder output = new StringBuilder("[");
             for (ConversationMessage message : messages) {
@@ -1372,6 +1646,44 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 return "未命名任务";
             }
             return normalized.length() <= 48 ? normalized : normalized.substring(0, 48) + "...";
+        }
+
+        private static @NotNull String string(@NotNull JsonObject object, @NotNull String key) {
+            String value = jsonString(object, key);
+            return value == null ? "" : value.trim();
+        }
+
+        private static boolean bool(@NotNull JsonObject object, @NotNull String key) {
+            if (!object.has(key) || !object.get(key).isJsonPrimitive()) {
+                return false;
+            }
+            try {
+                return object.get(key).getAsBoolean();
+            } catch (RuntimeException ignored) {
+                return false;
+            }
+        }
+
+        private static @NotNull String firstNonBlank(@Nullable String... values) {
+            for (String value : values) {
+                if (value != null && !value.trim().isBlank()) {
+                    return value.trim();
+                }
+            }
+            return "";
+        }
+
+        private static @NotNull String truncate(@NotNull String text, int maxLength) {
+            String normalized = text.replaceAll("\\s+", " ").trim();
+            return normalized.length() <= maxLength ? normalized : normalized.substring(0, maxLength) + "...";
+        }
+
+        private static boolean isMetaHistoryText(@NotNull String text) {
+            String normalized = text.trim();
+            return normalized.startsWith("<local-command-stdout>")
+                || normalized.startsWith("<command-name>")
+                || normalized.startsWith("<ide_")
+                || normalized.matches("(?i)^/(api-config|clear|compact|config|cost|doctor|help|init|login|logout|model|permissions?|plugins?|release-notes|resume|statusline|theme)(\\s|$).*");
         }
 
         private void openReview(@NotNull String reviewId, int index) {
@@ -1508,6 +1820,10 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
 
             private long updatedAt() {
                 return updatedAt;
+            }
+
+            private long createdAt() {
+                return createdAt;
             }
 
             private @NotNull List<ConversationMessage> messages() {
@@ -1663,6 +1979,25 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 return null;
             }
             return element.getAsString();
+        }
+
+        private static @NotNull List<String> jsonStringArray(@NotNull String rawJson, @NotNull String property) {
+            JsonElement element = extractJsonProperty(rawJson, property);
+            if (element == null || !element.isJsonArray()) {
+                return List.of();
+            }
+            JsonArray array = element.getAsJsonArray();
+            List<String> values = new ArrayList<>();
+            for (JsonElement item : array) {
+                if (!item.isJsonPrimitive() || !item.getAsJsonPrimitive().isString()) {
+                    continue;
+                }
+                String value = item.getAsString().trim();
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
+            return values;
         }
 
         private static int jsonInt(@NotNull String rawJson, @NotNull String property, int fallback) {

@@ -193,6 +193,7 @@ export type GlobalConfig = {
   openaiModelOptionsCache?: string[]
   openaiModelOptionsCacheBaseUrl?: string
   openaiModelOptionsCacheUpdatedAt?: number
+  openaiModelOptionsCacheKeyHash?: string
   openaiSmallModel?: string
   openaiMultimodalApiKey?: string
   openaiMultimodalBaseUrl?: string

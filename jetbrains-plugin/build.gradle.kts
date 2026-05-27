@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "com.helioncoder"
-version = "0.4.5+1"
+version = "0.5.1"
 
 val ideaPlatformVersion = "2025.3.3"
 

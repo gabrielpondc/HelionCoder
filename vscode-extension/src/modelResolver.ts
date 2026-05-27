@@ -3,6 +3,7 @@ import * as http from 'http';
 import * as https from 'https';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { getWorkspaceCwd } from './cli';
 
@@ -11,6 +12,7 @@ export interface ModelCandidate {
   label: string;
   source: string;
   description?: string;
+  contextWindow?: number;
 }
 
 export interface DefaultModelInfo {
@@ -47,6 +49,7 @@ export class ModelResolver {
   async listModels(options: { refreshApi?: boolean } = {}): Promise<ModelCandidate[]> {
     const models: ModelCandidate[] = [];
     const defaultModel = this.getDefaultModelInfo();
+    const endpoint = this.getEndpointConfig();
 
     models.push({
       id: 'default',
@@ -60,7 +63,7 @@ export class ModelResolver {
       options.refreshApi ||
       vscode.workspace.getConfiguration('helionCoder').get<boolean>('autoDetectModels', true)
     ) {
-      apiModels = await this.fetchApiModels().catch(error => {
+      apiModels = await this.fetchApiModels(endpoint).catch(error => {
         this.output.appendLine(
           `已跳过模型自动检测：${error instanceof Error ? error.message : String(error)}`,
         );
@@ -73,7 +76,7 @@ export class ModelResolver {
     }
     this.addConfiguredModels(models);
     this.addEnvironmentModels(models);
-    this.addFileModels(models);
+    this.addFileModels(models, endpoint);
 
     const selected = this.getSelectedModel();
     if (selected) {
@@ -172,7 +175,7 @@ export class ModelResolver {
     }
   }
 
-  private addFileModels(models: ModelCandidate[]): void {
+  private addFileModels(models: ModelCandidate[], endpoint: EndpointConfig): void {
     for (const filePath of getConfigFileCandidates()) {
       const data = readJson(filePath);
       if (!data) {
@@ -180,12 +183,11 @@ export class ModelResolver {
       }
 
       const source = shortPath(filePath);
-      collectModelsFromObject(data, source, models);
+      collectModelsFromObject(data, source, models, endpoint);
     }
   }
 
-  private async fetchApiModels(): Promise<ModelCandidate[]> {
-    const endpoint = this.getEndpointConfig();
+  private async fetchApiModels(endpoint: EndpointConfig): Promise<ModelCandidate[]> {
     if (!endpoint.apiKey) {
       return [];
     }
@@ -202,23 +204,9 @@ export class ModelResolver {
         : [];
 
     return rawModels
-      .map(item => {
-        if (typeof item === 'string') {
-          return item;
-        }
-        if (item && typeof item === 'object' && typeof (item as { id?: unknown }).id === 'string') {
-          return (item as { id: string }).id;
-        }
-        return undefined;
-      })
-      .filter((id): id is string => !!id && id.trim().length > 0)
-      .sort((a, b) => a.localeCompare(b))
-      .map(id => ({
-        id,
-        label: id,
-        source: new URL(url).host,
-        description: '从 OpenAI 兼容 /models 端点检测到。',
-      }));
+      .map(item => modelCandidateFromApiItem(item, new URL(url).host))
+      .filter((model): model is ModelCandidate => !!model)
+      .sort((a, b) => a.id.localeCompare(b.id))
   }
 
   private getEndpointConfig(): EndpointConfig {
@@ -243,7 +231,6 @@ export class ModelResolver {
       );
       fromFiles.baseUrl ??= firstString(
         data.openaiBaseUrl,
-        data.openaiModelOptionsCacheBaseUrl,
         data.baseUrl,
         data.baseURL,
         data.apiBaseUrl,
@@ -272,13 +259,14 @@ function collectModelsFromObject(
   data: Record<string, unknown>,
   source: string,
   models: ModelCandidate[],
+  endpoint: EndpointConfig,
 ): void {
   addModel(models, data.model, source);
   addModel(models, data.openaiModel, source);
   addModel(models, data.openaiSmallModel, source);
   addModel(models, data.openaiMultimodalModel, source);
 
-  if (Array.isArray(data.openaiModelOptionsCache)) {
+  if (isUsableModelOptionsCache(data, endpoint) && Array.isArray(data.openaiModelOptionsCache)) {
     for (const model of data.openaiModelOptionsCache) {
       addModel(models, model, `${source} /v1/models 缓存`);
     }
@@ -312,6 +300,128 @@ function collectModelsFromObject(
       addModel(models, value, `${source} 模型覆盖`);
     }
   }
+}
+
+function modelOptionsCacheKeyHash(apiKey: string | undefined): string {
+  return crypto.createHash('sha256').update(apiKey ?? '', 'utf8').digest('hex');
+}
+
+function normalizeBaseUrl(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+  try {
+    const url = new URL(value);
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString().replace(/\/+$/, '');
+  } catch {
+    return value.trim().replace(/\/+$/, '');
+  }
+}
+
+function isUsableModelOptionsCache(
+  data: Record<string, unknown>,
+  endpoint: EndpointConfig,
+): boolean {
+  if (!Array.isArray(data.openaiModelOptionsCache) || data.openaiModelOptionsCache.length === 0) {
+    return false;
+  }
+
+  const cacheBaseUrl = normalizeBaseUrl(firstString(data.openaiModelOptionsCacheBaseUrl));
+  const endpointBaseUrl = normalizeBaseUrl(endpoint.baseUrl);
+  if (!cacheBaseUrl || cacheBaseUrl !== endpointBaseUrl) {
+    return false;
+  }
+
+  return (
+    firstString(data.openaiModelOptionsCacheKeyHash) === modelOptionsCacheKeyHash(endpoint.apiKey)
+  );
+}
+
+function modelCandidateFromApiItem(
+  item: unknown,
+  source: string,
+): ModelCandidate | undefined {
+  if (typeof item === 'string') {
+    const id = item.trim();
+    return id ? { id, label: id, source, description: '从 OpenAI 兼容 /models 端点检测到。' } : undefined;
+  }
+  if (!item || typeof item !== 'object') {
+    return undefined;
+  }
+  const data = item as Record<string, unknown>;
+  const id = typeof data.id === 'string' ? data.id.trim() : '';
+  if (!id) {
+    return undefined;
+  }
+  const contextWindow = extractContextWindow(data);
+  return {
+    id,
+    label: id,
+    source,
+    description: contextWindow
+      ? `从 OpenAI 兼容 /models 端点检测到，最长上下文 ${formatTokenCount(contextWindow)}。`
+      : '从 OpenAI 兼容 /models 端点检测到。',
+    contextWindow,
+  };
+}
+
+function extractContextWindow(value: unknown): number | undefined {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+
+  const data = value as Record<string, unknown>;
+  const direct = firstPositiveNumber(
+    data.max_input_tokens,
+    data.context_length,
+    data.context_window,
+    data.contextWindow,
+    data.max_context_length,
+    data.max_context_tokens,
+    data.max_model_len,
+    data.input_token_limit,
+  );
+  if (direct) {
+    return direct;
+  }
+
+  const nestedKeys = ['metadata', 'capabilities', 'limits', 'model_info'];
+  for (const key of nestedKeys) {
+    const nested = data[key];
+    const nestedValue = extractContextWindow(nested);
+    if (nestedValue) {
+      return nestedValue;
+    }
+  }
+
+  const maxTokens = firstPositiveNumber(data.max_tokens);
+  return maxTokens && maxTokens >= 100_000 ? maxTokens : undefined;
+}
+
+function firstPositiveNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const parsed =
+      typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? Number(value)
+          : NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.round(parsed);
+    }
+  }
+  return undefined;
+}
+
+function formatTokenCount(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    return `${Math.round(tokens / 100_000) / 10}M`;
+  }
+  if (tokens >= 1_000) {
+    return `${Math.round(tokens / 1_000)}K`;
+  }
+  return String(tokens);
 }
 
 function resolveCliDefaultModel(): DefaultModelInfo {
@@ -384,26 +494,42 @@ function getConfigFileCandidates(): string[] {
 }
 
 function addModel(models: ModelCandidate[], value: unknown, source: string): void {
-  const id = typeof value === 'string' ? value.trim() : '';
+  const id =
+    typeof value === 'string'
+      ? value.trim()
+      : value && typeof value === 'object' && typeof (value as { id?: unknown }).id === 'string'
+        ? ((value as { id: string }).id).trim()
+        : '';
   if (!id) {
     return;
   }
+  const contextWindow = extractContextWindow(value);
   models.push({
     id,
     label: id,
     source,
+    contextWindow,
   });
 }
 
 function dedupeModels(models: ModelCandidate[]): ModelCandidate[] {
-  const seen = new Set<string>();
+  const seen = new Map<string, number>();
   const deduped: ModelCandidate[] = [];
   for (const model of models) {
     const key = model.id.toLowerCase();
-    if (seen.has(key)) {
+    const existingIndex = seen.get(key);
+    if (existingIndex !== undefined) {
+      const existing = deduped[existingIndex];
+      if (existing && !existing.contextWindow && model.contextWindow) {
+        deduped[existingIndex] = {
+          ...existing,
+          contextWindow: model.contextWindow,
+          description: existing.description ?? model.description,
+        };
+      }
       continue;
     }
-    seen.add(key);
+    seen.set(key, deduped.length);
     deduped.push(model);
   }
   return deduped;
