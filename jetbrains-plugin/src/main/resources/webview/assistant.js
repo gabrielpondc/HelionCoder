@@ -16,6 +16,9 @@
     recentHistory: [],
     recentHistoryTotal: 0,
     pendingPermissions: new Map(),
+    pendingDrafts: new Map(),
+    activeDrafts: new Map(),
+    pendingSideQuestionDrafts: new Map(),
     shouldAutoScroll: true,
   };
   const sendIcon =
@@ -297,16 +300,19 @@
       clearAttachments();
       return;
     }
+    const clientRequestId = createClientRequestId();
+    const draft = snapshotComposer(value);
+    state.pendingDrafts.set(clientRequestId, draft);
     vscode.postMessage({
       type: "ask",
+      clientRequestId,
       prompt: finalPrompt,
       displayPrompt: value || (attachments.length ? "已添加附件" : ""),
       editPrompt: value,
       attachments,
       mode: "ask",
     });
-    prompt.value = "";
-    clearAttachments();
+    updateQueueState();
   });
 
   for (const button of document.querySelectorAll("[data-prompt]")) {
@@ -327,8 +333,9 @@
     if (!state.running || !value) {
       return;
     }
-    sendSideQuestion(value, formatGuideDisplay(value));
-    prompt.value = "";
+    const clientRequestId = createClientRequestId();
+    state.pendingSideQuestionDrafts.set(clientRequestId, snapshotComposer(value));
+    sendSideQuestion(value, formatGuideDisplay(value), clientRequestId);
     updateQueueState();
   });
 
@@ -763,6 +770,11 @@
   vscode.postMessage({ type: "ready" });
 
   function startRun(message) {
+    const draft = consumePendingDraft(message.clientRequestId);
+    if (draft && message.requestId) {
+      state.activeDrafts.set(message.requestId, draft);
+      clearComposerIfUnchanged(draft);
+    }
     state.running = true;
     state.currentRequestId = message.requestId;
     state.currentOutput = "";
@@ -1119,6 +1131,7 @@
     if (message.requestId !== state.currentRequestId) {
       return;
     }
+    state.activeDrafts.delete(message.requestId);
     state.running = false;
     document.body.classList.remove("is-running");
     updateQueueState();
@@ -1217,6 +1230,11 @@
   }
 
   function failRun(message) {
+    const draft = state.activeDrafts.get(message.requestId);
+    if (draft) {
+      restoreComposerIfEmpty(draft);
+      state.activeDrafts.delete(message.requestId);
+    }
     state.running = false;
     document.body.classList.remove("is-running");
     updateQueueState();
@@ -1257,6 +1275,10 @@
   }
 
   function startSideQuestion(message) {
+    const draft = consumePendingSideQuestionDraft(message.clientRequestId);
+    if (draft) {
+      clearComposerIfUnchanged(draft);
+    }
     document.body.classList.add("has-conversation");
     timeline.appendChild(
       createBubble("user side-question", message.question || "引导", {
@@ -1294,6 +1316,10 @@
   }
 
   function failSideQuestion(message) {
+    const draft = consumePendingSideQuestionDraft(message.clientRequestId);
+    if (draft) {
+      restoreComposerIfEmpty(draft);
+    }
     const bubble = document.querySelector(
       `[data-request-id="${message.requestId}"]`,
     );
@@ -3031,9 +3057,10 @@
     });
   }
 
-  function sendSideQuestion(value, displayPrompt) {
+  function sendSideQuestion(value, displayPrompt, clientRequestId) {
     vscode.postMessage({
       type: "sideQuestion",
+      clientRequestId,
       question: value,
       displayPrompt: displayPrompt || formatGuideDisplay(value),
     });
@@ -3825,6 +3852,81 @@
   function clearAttachments() {
     state.attachments = [];
     renderAttachments();
+  }
+
+  function createClientRequestId() {
+    return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  function snapshotComposer(text = prompt.value.trim()) {
+    return {
+      text,
+      attachments: displayAttachments(),
+    };
+  }
+
+  function consumePendingDraft(clientRequestId) {
+    if (!clientRequestId) {
+      return undefined;
+    }
+    const draft = state.pendingDrafts.get(clientRequestId);
+    state.pendingDrafts.delete(clientRequestId);
+    return draft;
+  }
+
+  function consumePendingSideQuestionDraft(clientRequestId) {
+    if (!clientRequestId) {
+      return undefined;
+    }
+    const draft = state.pendingSideQuestionDrafts.get(clientRequestId);
+    state.pendingSideQuestionDrafts.delete(clientRequestId);
+    return draft;
+  }
+
+  function clearComposerIfUnchanged(draft) {
+    if (!draft) {
+      return;
+    }
+    if (prompt.value.trim() !== (draft.text || "").trim()) {
+      return;
+    }
+    if (!sameDisplayAttachments(displayAttachments(), draft.attachments || [])) {
+      return;
+    }
+    prompt.value = "";
+    clearAttachments();
+    updateSuggest();
+    updateQueueState();
+  }
+
+  function restoreComposerIfEmpty(draft) {
+    if (!draft || prompt.value.trim() || state.attachments.length) {
+      return;
+    }
+    prompt.value = draft.text || "";
+    state.attachments = (draft.attachments || []).map((attachment) => ({
+      ...attachment,
+      id: createClientRequestId(),
+    }));
+    renderAttachments();
+    updateSuggest();
+    updateQueueState();
+  }
+
+  function sameDisplayAttachments(left, right) {
+    if ((left || []).length !== (right || []).length) {
+      return false;
+    }
+    return (left || []).every((item, index) => {
+      const other = right[index] || {};
+      return (
+        item.kind === other.kind &&
+        item.label === other.label &&
+        item.src === other.src &&
+        item.path === other.path &&
+        item.token === other.token
+      );
+    });
   }
 
   function composePrompt(value) {

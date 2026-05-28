@@ -136,14 +136,16 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                     coalesce(extract(MODE_PATTERN, rawMessage), "ask"),
                     coalesce(extract(DISPLAY_PROMPT_PATTERN, rawMessage), ""),
                     coalesce(extract(EDIT_PROMPT_PATTERN, rawMessage), ""),
-                    attachmentsJson(rawMessage)
+                    attachmentsJson(rawMessage),
+                    coalesce(jsonString(rawMessage, "clientRequestId"), "")
                 );
                 case "quickAction" -> runAssistantPrompt(
                     quickActionPrompt(coalesce(extract(ACTION_PATTERN, rawMessage), "")),
                     coalesce(extract(ACTION_PATTERN, rawMessage), "ask"),
                     "",
                     "",
-                    "[]"
+                    "[]",
+                    ""
                 );
                 case "selectModel" -> {
                     String model = coalesce(extract(MODEL_PATTERN, rawMessage), "");
@@ -196,7 +198,10 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                     jsonInt(rawMessage, "index", -1)
                 );
                 case "permissionResponse" -> respondToPermission(rawMessage);
-                case "sideQuestion" -> sendSideQuestion(coalesce(extract(QUESTION_PATTERN, rawMessage), ""));
+                case "sideQuestion" -> sendSideQuestion(
+                    coalesce(extract(QUESTION_PATTERN, rawMessage), ""),
+                    coalesce(jsonString(rawMessage, "clientRequestId"), "")
+                );
                 case "refreshModels" -> refreshModels();
                 case "checkUpdates" -> updateCli();
                 case "showOutput" -> showOutput();
@@ -227,7 +232,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
                 "Approved plan:",
                 approvedPlan.toString().trim()
             );
-            runAssistantPrompt(prompt, "ask", "执行已批准计划", prompt, "[]");
+            runAssistantPrompt(prompt, "ask", "执行已批准计划", prompt, "[]", "");
         }
 
         private void runAssistantPrompt(
@@ -235,7 +240,8 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             @NotNull String mode,
             @NotNull String displayPrompt,
             @NotNull String editPrompt,
-            @NotNull String attachments
+            @NotNull String attachments,
+            @NotNull String clientRequestId
         ) {
             String trimmed = prompt.trim();
             if (trimmed.isEmpty()) {
@@ -251,6 +257,7 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             appendHistory("user", visiblePrompt);
             appendOutput("开始请求：" + trimmed);
             postToWebview("{\"type\":\"run-start\",\"requestId\":" + json(requestId)
+                + ",\"clientRequestId\":" + json(clientRequestId)
                 + ",\"prompt\":" + json(visiblePrompt)
                 + ",\"editPrompt\":" + json(editablePrompt)
                 + ",\"attachments\":" + attachments
@@ -439,18 +446,18 @@ public final class HelionToolWindowFactory implements ToolWindowFactory {
             postContext();
         }
 
-        private void sendSideQuestion(@NotNull String question) {
+        private void sendSideQuestion(@NotNull String question, @NotNull String clientRequestId) {
             HelionCli.StreamController controller = activeController;
             if (controller == null || question.trim().isEmpty()) {
-                postToWebview("{\"type\":\"side-question-error\",\"requestId\":" + json(UUID.randomUUID().toString()) + ",\"question\":" + json(question) + ",\"message\":\"当前没有可接收引导的运行中任务。\"}");
+                postToWebview("{\"type\":\"side-question-error\",\"clientRequestId\":" + json(clientRequestId) + ",\"requestId\":" + json(UUID.randomUUID().toString()) + ",\"question\":" + json(question) + ",\"message\":\"当前没有可接收引导的运行中任务。\"}");
                 return;
             }
             String requestId = controller.sendSideQuestion(question.trim());
             if (requestId == null) {
-                postToWebview("{\"type\":\"side-question-error\",\"requestId\":" + json(UUID.randomUUID().toString()) + ",\"question\":" + json(question) + ",\"message\":\"发送后续引导失败。\"}");
+                postToWebview("{\"type\":\"side-question-error\",\"clientRequestId\":" + json(clientRequestId) + ",\"requestId\":" + json(UUID.randomUUID().toString()) + ",\"question\":" + json(question) + ",\"message\":\"发送后续引导失败。\"}");
                 return;
             }
-            postToWebview("{\"type\":\"side-question-start\",\"requestId\":" + json(requestId) + ",\"question\":" + json(question) + "}");
+            postToWebview("{\"type\":\"side-question-start\",\"clientRequestId\":" + json(clientRequestId) + ",\"requestId\":" + json(requestId) + ",\"question\":" + json(question) + "}");
         }
 
         private void respondToPermission(@NotNull String rawMessage) {

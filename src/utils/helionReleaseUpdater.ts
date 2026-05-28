@@ -1,6 +1,8 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { constants as fsConstants } from 'node:fs'
 import { access, chmod, copyFile, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
 
@@ -304,45 +306,17 @@ async function installAndVerifyRelease({
 	)
 
 	if (restartAfterUpdate) {
-		const tempPath = await downloadReleaseAssetToTemp(release, asset, target.path)
-		const relaunchAfterUpdate = shouldRelaunchAfterUpdate()
-		try {
-			if (process.platform === 'win32') {
-				await scheduleWindowsReplaceAndRestart({
-					targetPath: target.path,
-					tempPath,
-					expectedVersion: releaseVersion.raw,
-					restartArgs: restartArgs ?? defaultRestartArgs(),
-					restartCwd: restartCwd ?? process.cwd(),
-					relaunchAfterUpdate,
-					logger,
-				})
-			} else {
-				await schedulePosixReplaceAndRestart({
-					targetPath: target.path,
-					tempPath,
-					expectedVersion: releaseVersion.raw,
-					restartArgs: restartArgs ?? defaultRestartArgs(),
-					restartCwd: restartCwd ?? process.cwd(),
-					relaunchAfterUpdate,
-					logger,
-				})
-			}
-		} catch (error) {
-			await rm(tempPath, { force: true })
-			throw error
-		}
-		const message = relaunchAfterUpdate
-			? `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换并重启。`
-			: `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换。`
-		logger.info(message)
-		return {
-			status: 'restart_scheduled',
-			binaryPath: target.path,
-			previousVersion: localVersion?.raw,
-			latestVersion: releaseVersion.raw,
-			message,
-		}
+		return scheduleReleaseReplacement({
+			target,
+			label,
+			localVersion,
+			release,
+			releaseVersion,
+			asset,
+			restartArgs,
+			restartCwd,
+			logger,
+		})
 	}
 
 	await installReleaseAsset(release, asset, target.path)
@@ -365,6 +339,78 @@ async function installAndVerifyRelease({
 	}
 
 	return result
+}
+
+async function scheduleReleaseReplacement({
+	target,
+	label,
+	localVersion,
+	release,
+	releaseVersion,
+	asset,
+	restartArgs,
+	restartCwd,
+	logger,
+}: {
+	target: InstallTarget
+	label: string
+	localVersion: VersionInfo | null
+	release: GitHubRelease
+	releaseVersion: VersionInfo
+	asset: GitHubReleaseAsset
+	restartArgs?: string[]
+	restartCwd?: string
+	logger: HelionReleaseUpdateLogger
+}): Promise<HelionReleaseUpdateResult> {
+	const useAdminPrivileges = await shouldUseMacOSAdminHelper(target.path)
+	const tempPath = await downloadReleaseAssetToTemp(
+		release,
+		asset,
+		target.path,
+		useAdminPrivileges ? await cliUpdateWorkDir() : undefined,
+	)
+	const relaunchAfterUpdate = shouldRelaunchAfterUpdate() && !useAdminPrivileges
+	try {
+		if (process.platform === 'win32') {
+			await scheduleWindowsReplaceAndRestart({
+				targetPath: target.path,
+				tempPath,
+				expectedVersion: releaseVersion.raw,
+				restartArgs: restartArgs ?? defaultRestartArgs(),
+				restartCwd: restartCwd ?? process.cwd(),
+				relaunchAfterUpdate,
+				logger,
+			})
+		} else {
+			await schedulePosixReplaceAndRestart({
+				targetPath: target.path,
+				tempPath,
+				expectedVersion: releaseVersion.raw,
+				restartArgs: restartArgs ?? defaultRestartArgs(),
+				restartCwd: restartCwd ?? process.cwd(),
+				relaunchAfterUpdate,
+				useAdminPrivileges,
+				logger,
+			})
+		}
+	} catch (error) {
+		await rm(tempPath, { force: true })
+		throw error
+	}
+
+	const message = useAdminPrivileges
+		? `${label} 版本检测：已下载 ${releaseVersion.raw}，macOS 将请求管理员权限写入 ${target.displayPath}。当前 CLI 会退出；更新完成后请重新运行 helion-coder。`
+		: relaunchAfterUpdate
+			? `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换并重启。`
+			: `${label} 版本检测：已下载 ${releaseVersion.raw}，将在当前进程退出后替换。`
+	logger.info(message)
+	return {
+		status: 'restart_scheduled',
+		binaryPath: target.path,
+		previousVersion: localVersion?.raw,
+		latestVersion: releaseVersion.raw,
+		message,
+	}
 }
 
 export async function maybeUpdateCurrentCliFromRelease(options: {
@@ -585,8 +631,9 @@ async function downloadReleaseAssetToTemp(
 	release: GitHubRelease,
 	asset: GitHubReleaseAsset,
 	targetPath: string,
+	workDir?: string,
 ): Promise<string> {
-	const dir = path.dirname(targetPath)
+	const dir = workDir ?? path.dirname(targetPath)
 	await mkdir(dir, { recursive: true })
 
 	const tempPath = path.join(
@@ -710,6 +757,7 @@ async function schedulePosixReplaceAndRestart({
 	restartArgs,
 	restartCwd,
 	relaunchAfterUpdate,
+	useAdminPrivileges,
 	logger,
 }: {
 	targetPath: string
@@ -718,11 +766,16 @@ async function schedulePosixReplaceAndRestart({
 	restartArgs: string[]
 	restartCwd: string
 	relaunchAfterUpdate: boolean
+	useAdminPrivileges?: boolean
 	logger: HelionReleaseUpdateLogger
 }): Promise<void> {
 	const stdio = helperStdio()
+	const scriptDir =
+		useAdminPrivileges && process.platform === 'darwin'
+			? await cliUpdateWorkDir()
+			: path.dirname(targetPath)
 	const scriptPath = path.join(
-		path.dirname(targetPath),
+		scriptDir,
 		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.update.sh`,
 	)
 	const backupPath = `${targetPath}.bak-${process.pid}-${Date.now()}`
@@ -790,6 +843,22 @@ async function schedulePosixReplaceAndRestart({
 
 	await writeFile(scriptPath, script)
 	await chmod(scriptPath, 0o755)
+	if (useAdminPrivileges && process.platform === 'darwin') {
+		const shellCommand = `/bin/sh ${quoteShellArg(scriptPath)}`
+		const appleScript = [
+			`do shell script ${quoteAppleScriptString(shellCommand)} with administrator privileges with prompt ${quoteAppleScriptString(
+				`HelionCoder needs administrator permission to update the CLI at ${targetPath}.`,
+			)}`,
+		].join('\n')
+		spawn('osascript', ['-e', appleScript], {
+			cwd: restartCwd,
+			detached: true,
+			stdio: 'ignore',
+		}).unref()
+		logger.info('HelionCoder CLI 版本检测：已启动 macOS 管理员权限更新 helper。')
+		return
+	}
+
 	spawn('/bin/sh', [scriptPath], {
 		cwd: restartCwd,
 		detached: stdio === 'ignore',
@@ -825,6 +894,28 @@ function quoteBatchArg(value: string): string {
 
 function quoteShellArg(value: string): string {
 	return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+function quoteAppleScriptString(value: string): string {
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+async function shouldUseMacOSAdminHelper(targetPath: string): Promise<boolean> {
+	if (process.platform !== 'darwin') {
+		return false
+	}
+	try {
+		await access(path.dirname(targetPath), fsConstants.W_OK)
+		return false
+	} catch {
+		return true
+	}
+}
+
+async function cliUpdateWorkDir(): Promise<string> {
+	const dir = path.join(tmpdir(), `helioncoder-cli-update-${process.pid}`)
+	await mkdir(dir, { recursive: true })
+	return dir
 }
 
 async function clearMacOSQuarantine(targetPath: string): Promise<void> {

@@ -23,6 +23,7 @@ type WebviewMessage =
   | { type: "ready" }
   | {
       type: "ask";
+      clientRequestId?: string;
       prompt: string;
       mode?: string;
       displayPrompt?: string;
@@ -31,6 +32,7 @@ type WebviewMessage =
     }
   | {
       type: "sideQuestion";
+      clientRequestId?: string;
       question: string;
       displayPrompt?: string;
     }
@@ -189,10 +191,15 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
           message.displayPrompt,
           message.attachments,
           message.editPrompt,
+          message.clientRequestId,
         );
         return;
       case "sideQuestion":
-        this.runSideQuestion(message.question, message.displayPrompt);
+        this.runSideQuestion(
+          message.question,
+          message.displayPrompt,
+          message.clientRequestId,
+        );
         return;
       case "permissionResponse":
         this.respondToPermission(message.requestId, message.response);
@@ -359,6 +366,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     displayPrompt?: string,
     attachments: AttachmentDisplay[] = [],
     editPrompt?: string,
+    clientRequestId?: string,
     options: RunAssistantPromptOptions = {},
   ): Promise<void> {
     const trimmed = prompt.trim();
@@ -406,6 +414,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     this.post({
       type: "run-start",
       requestId,
+      clientRequestId,
       mode: effectiveMode,
       prompt: displayPrompt?.trim() || trimmed,
       editPrompt: editPrompt?.trim() ?? displayPrompt?.trim() ?? trimmed,
@@ -981,6 +990,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
       "执行已批准计划",
       [],
       prompt,
+      undefined,
       {
         forcePlanMode: false,
         permissionModeOverride: executionPermissionMode,
@@ -1106,7 +1116,11 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: "conversation-new" });
   }
 
-  private runSideQuestion(question: string, displayPrompt?: string): void {
+  private runSideQuestion(
+    question: string,
+    displayPrompt?: string,
+    clientRequestId?: string,
+  ): void {
     const trimmed = question.trim();
     if (!trimmed) {
       return;
@@ -1116,6 +1130,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
     if (!requestId) {
       this.post({
         type: "side-question-error",
+        clientRequestId,
         requestId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
         question: displayPrompt?.trim() || trimmed,
         message: "当前没有可接收引导的运行中任务。",
@@ -1125,6 +1140,7 @@ export class HelionAssistantViewProvider implements vscode.WebviewViewProvider {
 
     this.post({
       type: "side-question-start",
+      clientRequestId,
       requestId,
       question: displayPrompt?.trim() || trimmed,
     });

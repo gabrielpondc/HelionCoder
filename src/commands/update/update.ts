@@ -16,10 +16,10 @@ export const call: LocalCommandCall = async () => {
 	})
 
 	if (result.status === 'updated') {
-		lines.push('更新已安装，正在重启 CLI 以使用新版本。')
+		lines.push(result.message || '更新已安装，正在重启 CLI 以使用新版本。')
 		scheduleShutdown()
 	} else if (result.status === 'restart_scheduled') {
-		lines.push('更新已准备好，正在重启 CLI 以完成替换。')
+		lines.push(result.message || '更新已准备好，正在退出当前 CLI 以完成替换。')
 		scheduleShutdown()
 	} else if (result.status === 'skipped') {
 		lines.push(
