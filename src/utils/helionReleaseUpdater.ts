@@ -680,7 +680,6 @@ async function scheduleWindowsReplaceAndRestart({
 	relaunchAfterUpdate: boolean
 	logger: HelionReleaseUpdateLogger
 }): Promise<void> {
-	const stdio = helperStdio()
 	const scriptPath = path.join(
 		path.dirname(targetPath),
 		`.${path.basename(targetPath)}.${process.pid}.${Date.now()}.update.cmd`,
@@ -743,9 +742,9 @@ async function scheduleWindowsReplaceAndRestart({
 	await writeFile(scriptPath, script)
 	spawn('cmd.exe', ['/d', '/s', '/c', scriptPath], {
 		cwd: restartCwd,
-		detached: stdio === 'ignore',
-		stdio,
-		windowsHide: stdio === 'ignore',
+		detached: true,
+		stdio: 'ignore',
+		windowsHide: true,
 	}).unref()
 	logger.info('HelionCoder CLI 版本检测：已启动 Windows 更新 helper。')
 }

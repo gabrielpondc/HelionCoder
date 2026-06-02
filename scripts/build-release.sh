@@ -38,6 +38,7 @@ EXTERNALS=(
   "@azure/identity"
   "google-auth-library"
   "sharp"
+  "image-processor-napi"
   "@opentelemetry/exporter-metrics-otlp-grpc"
   "@opentelemetry/exporter-metrics-otlp-http"
   "@opentelemetry/exporter-metrics-otlp-proto"

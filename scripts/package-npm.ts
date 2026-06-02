@@ -56,6 +56,9 @@ function main() {
     engines: {
       node: '>=20.0.0',
     },
+    dependencies: {
+      sharp: srcPkg.dependencies?.sharp ?? '^0.34.5',
+    },
     os: ['darwin', 'linux', 'win32'],
     files: [
       'cli.mjs',

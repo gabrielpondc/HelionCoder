@@ -39,6 +39,7 @@ export async function getImageProcessor(): Promise<SharpFunction> {
     return imageProcessorModule.default
   }
 
+  let nativeLoadError: unknown
   if (isInBundledMode()) {
     // Try to load the native image processor first
     try {
@@ -47,20 +48,25 @@ export async function getImageProcessor(): Promise<SharpFunction> {
       const sharp = imageProcessor.sharp || imageProcessor.default
       imageProcessorModule = { default: sharp }
       return sharp
-    } catch {
-      // Fall back to sharp if native module is not available
-      // biome-ignore lint/suspicious/noConsole: intentional warning
-      console.warn(
-        'Native image processor not available, falling back to sharp',
-      )
+    } catch (error) {
+      nativeLoadError = error
     }
   }
 
   // Use sharp for non-bundled builds or as fallback.
   // Single structural cast: our SharpFunction is a subset of sharp's actual type surface.
-  const imported = (await import(
-    'sharp'
-  )) as unknown as MaybeDefault<SharpFunction>
+  let imported: MaybeDefault<SharpFunction>
+  try {
+    imported = (await import('sharp')) as unknown as MaybeDefault<SharpFunction>
+  } catch (error) {
+    if (nativeLoadError) {
+      throw new Error(
+        'Native image processor and sharp fallback are both unavailable.',
+        { cause: { nativeLoadError, sharpLoadError: error } },
+      )
+    }
+    throw error
+  }
   const sharp = unwrapDefault(imported)
   imageProcessorModule = { default: sharp }
   return sharp
@@ -92,4 +98,3 @@ function unwrapDefault<T extends (...args: never[]) => unknown>(
 ): T {
   return typeof mod === 'function' ? mod : mod.default
 }
-
